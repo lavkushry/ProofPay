@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
 from backend.app.database import engine, Base
+from backend.app.dependencies import require_workflow
 from backend.app.routers import (
     health, sessions, catalog, briefs, mandates, tasks,
     deliveries, evidence, receipts, judge
@@ -25,7 +26,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,13 +36,13 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(sessions.router)
 app.include_router(catalog.router)
-app.include_router(briefs.router)
-app.include_router(mandates.router)
+app.include_router(briefs.router, dependencies=[Depends(require_workflow)])
+app.include_router(mandates.router, dependencies=[Depends(require_workflow)])
 app.include_router(tasks.router)
-app.include_router(deliveries.router)
+app.include_router(deliveries.router, dependencies=[Depends(require_workflow)])
 app.include_router(evidence.router)
 app.include_router(receipts.router)
-app.include_router(judge.router)
+app.include_router(judge.router, dependencies=[Depends(require_workflow)])
 
 if __name__ == "__main__":
     import uvicorn

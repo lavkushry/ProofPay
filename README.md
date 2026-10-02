@@ -2,95 +2,62 @@
 
 > **ProofPay compiles the review queue between 'work submitted' and 'payment released' into executable acceptance checks — and pays only when evidence passes.**
 
-Targeted for the **PayPal AI Hackathon 2026**.
+ProofPay is being built for the PayPal AI Hackathon 2026. Its intended workflow connects brief compilation, trusted fixture execution, grounded AI review, correction, and independently guarded sandbox payment.
 
----
+## Implementation status
 
-## 🎯 What is ProofPay?
+The runtime foundation provides a React/TypeScript preview, FastAPI read surfaces, PostgreSQL 17 base identities, and broken/corrected checkout fixtures. Business mutations return `503 WORKFLOW_UNAVAILABLE` while authorization, durable jobs, real verification and guarded payouts are implemented. The preview cannot produce completed payment records.
 
-ProofPay eliminates software agency delivery review bottlenecks by compiling natural language briefs into automated acceptance test suites. When freelance contractors submit work, an isolated runner executes the test suite, and a multimodal LLM compares the contractor's claim against actual execution evidence and screenshot pixels. When all checks pass and release guards verify, payment is automatically dispatched via the **PayPal Payouts API**.
+Actual model integration, PayPal settlement/webhook/cancellation proof, runner job polling, immutable migrations and hosted judge access remain pending. The runner is an optional Compose `verification` profile containing the existing scaffold. Its synthetic outputs are not used by the API.
 
-### 🌟 Key Differentiators
-1. **Acceptance-Check Compiler:** Translates agency briefs into bounded, executable test templates (`viewport_no_horizontal_overflow`, `cart_total_unchanged`, `keyboard_checkout_reachable`).
-2. **Grounded AI Reviewer:** Compares delivery claims against test execution outputs and screenshot pixels, surfacing precise contradictions (e.g. contractor claims mobile fix, but runner observes 480px horizontal overflow at 320px viewport).
-3. **Strict PayPal Security Boundary:** AI models and test runners have zero access to financial credentials. The backend payment executor alone calls PayPal sandbox APIs across strictly 6 allowed endpoints.
-4. **Idempotent Reconciliation:** One financial obligation per milestone across all mandate revisions, preventing duplicate payouts across retries and replayed events.
+See [implementation milestones](IMPLEMENTATION_PLAN.md), the [GitHub roadmap](https://github.com/lavkushry/ProofPay/issues/1), and the [API coverage inventory](docs/API_IMPLEMENTATION_STATUS.md). The root `00`–`06` documents define the target product; their contracts do not imply completed implementation.
 
----
+## Run locally
 
-## 🏗️ Architecture
+With Docker and Docker Compose:
 
-```mermaid
-flowchart LR
-    AgencyOwner["Agency Owner"] -->|Brief & Freeze Mandate| App["ProofPay Platform"]
-    Contractor["Contractor"] -->|Submit Allowlisted Version| App
-    App -->|Isolated Test Run| Runner["Playwright Docker Runner"]
-    Runner -->|Screenshots & JSON Results| App
-    App -->|Grounded Evidence Review| LLM["LLM Service (Multimodal)"]
-    LLM -->|Pass / Fail / Contradiction| App
-    App -->|If Guards Pass: Payout| PayPal["PayPal Sandbox (6 Endpoints)"]
-    PayPal -->|Signed Webhook / Item Status| App
-```
-
-### Tech Stack
-- **Frontend:** React, TypeScript, Vite, Tailwind CSS, AG Grid
-- **Backend API:** FastAPI, SQLAlchemy (asyncpg / aiosqlite), Pydantic v2
-- **Database:** PostgreSQL 16 (Relational schema, Outbox pattern, JSONB evidence)
-- **Runner:** Isolated Playwright container with Chromium
-- **Payment Rail:** PayPal Payouts REST API (Sandbox mode strictly enforced)
-- **Deployment:** Docker Compose (local) / Render (hosted)
-
----
-
-## 🚀 Quickstart
-
-### Prerequisites
-- Docker & Docker Compose
-- *or* Python 3.11+ and Node.js 20+
-
-### Option A: Run with Docker Compose (Recommended)
 ```bash
 docker compose up --build
 ```
-- Frontend UI: `http://localhost:3000`
-- Backend API Docs: `http://localhost:8000/docs`
-- Checkout Fixture: `http://localhost:8080`
 
-### Option B: Run Locally
-1. **Backend:**
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   python seed.py
-   uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
-2. **Fixture:**
-   ```bash
-   cd fixture
-   pip install -r requirements.txt
-   uvicorn app:app --host 0.0.0.0 --port 8080
-   ```
-3. **Frontend:**
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
+- Frontend: http://localhost:3000
+- API documentation: http://localhost:8000/docs
+- Checkout fixture: http://localhost:8080
 
----
+Compose initializes the SQL scaffold, seeds base agency/persona records, and waits for API database readiness before starting the web proxy. No provider credentials are needed for this preview. Services bind to localhost; PostgreSQL 17 uses a new `pgdata17` volume, preserving any older PostgreSQL 16 volume. Alembic migrations and full schema/privilege reconciliation are the next milestone.
 
-## 🎬 175-Second Canonical Demo Arc (D01–D12)
+If a port is occupied, set `PROOFPAY_DB_PORT`, `PROOFPAY_API_PORT`, `PROOFPAY_FIXTURE_PORT` or `PROOFPAY_WEB_PORT` in `.env`. The smoke script accepts matching `--web-url` and `--fixture-url` arguments.
 
-1. **D01 (0–10s):** Agency owner inspects Work Queue with pending deliveries and hold states.
-2. **D02–D03 (10–42s):** Agency owner enters responsive CSS brief; AI compiles 3 distinct checks (`C01`, `C02`, `C03`).
-3. **D04 (42–53s):** Owner reviews and freezes immutable mandate with conditional payment authority ($75 USD).
-4. **D05–D06 (53–89s) [Core Contradiction]:** Contractor submits broken version claiming "Mobile checkout fixed". Runner screenshot proves horizontal overflow at 320px. AI cites contradiction and holds payment.
-5. **D07–D08 (89–125s):** Contractor resubmits corrected artifact. All 3 tests pass; AI reviewer confirms clean evidence.
-6. **D09–D10 (125–161s):** Backend executor dispatches PayPal sandbox payout. Reconciles item `SUCCESS` and generates linked audit receipt.
-7. **D11 (161–169s):** Replaying delivery resolves to existing attempt—zero duplicate payment.
-8. **D12 (169–175s):** Contractor and agency owner views confirm identical financial settlement.
+For Python 3.11+ and Node.js 20.19+ or 22.12+ development, run from the repository root in a virtual environment:
 
----
+```bash
+python -m pip install -r backend/requirements.txt -r fixture/requirements.txt
+python -m backend.seed
+python -m uvicorn backend.app.main:app --reload --port 8000
+```
 
-## 📜 License
-MIT License. See [LICENSE](LICENSE) for details.
+In separate terminals, run `python -m uvicorn fixture.app:app --port 8080` and `cd frontend && npm ci && npm run dev`. The default development database is SQLite; financial/concurrency acceptance requires PostgreSQL. Copy `.env.example` to `.env` only when overriding defaults. The [Vite guide](https://vite.dev/guide/) documents the frontend's Node requirements.
+
+## Validate changes
+
+```bash
+python -m pytest -q
+python -m compileall -q backend fixture runner scripts
+python scripts/api_inventory.py --check
+```
+
+In `frontend/`, run `npm ci`, `npm run build`, and `npm audit --audit-level=moderate`. With Compose running, `python scripts/smoke_test.py` checks PostgreSQL readiness, seeded identity, nginx API routing and SPA fallback, fixtures, and the delivery hold. GitHub Actions runs these checks and a fresh-Compose smoke job.
+
+Python dependency ranges live in each service's `requirements.in`; compiled `requirements.txt` files pin resolved versions. Regenerate with `uv pip compile SERVICE/requirements.in --python-version 3.11 --output-file SERVICE/requirements.txt`. Keep the Playwright image tag aligned with the runner's pinned package.
+
+## Payment boundary
+
+The API configuration contains no PayPal or recipient-decryption credentials. The transport adapter loads separate `.env.executor` settings when explicitly instantiated and enforces the sandbox host and six-operation allowlist. Missing credentials raise an unavailable error; provider failures remain failures. The API never instantiates this adapter. Its future executor worker still requires persistent attempt identity, independent guards and item reconciliation before dispatch is enabled.
+
+Keep real credentials outside source control, model context, fixture/runner containers and logs. Test doubles establish local behavior only; genuine sandbox identifiers and evidence are required for the completed demo case.
+
+## Target demo and license
+
+The planned D01–D12 journey is a 175-second owner/contractor demonstration: approve three checks, expose a real contradiction at a 320px viewport, resubmit a corrected artifact, reconcile genuine payout item success, inspect the linked receipt, and prove replay creates no duplicate payment. It remains a release gate in the implementation plan.
+
+MIT licensed. See [LICENSE](LICENSE).

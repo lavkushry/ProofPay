@@ -1,17 +1,14 @@
-version: '3.8'
-
 services:
   db:
-    image: postgres:16-alpine
-    container_name: proofpay-db
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: proofpay
       POSTGRES_PASSWORD: proofpay_password
       POSTGRES_DB: proofpay
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${PROOFPAY_DB_PORT:-5432}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata17:/var/lib/postgresql/data
       - ./backend/migrations/schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U proofpay"]
@@ -23,34 +20,35 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: proofpay-api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${PROOFPAY_API_PORT:-8000}:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://proofpay:proofpay_password@db:5432/proofpay
       - ENVIRONMENT=development
-      - DEBUG=true
-      - PAYPAL_MODE=sandbox
-      - PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
+      - DEBUG=false
       - FIXTURE_URL=http://fixture:8080
-      - RUNNER_URL=http://runner:8081
+    command: ["sh", "-c", "python -m backend.seed && exec uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"]
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/readyz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   fixture:
     build:
       context: ./fixture
       dockerfile: Dockerfile
-    container_name: proofpay-fixture
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${PROOFPAY_FIXTURE_PORT:-8080}:8080"
 
   runner:
+    profiles: ["verification"]
     build:
       context: ./runner
       dockerfile: Dockerfile
-    container_name: proofpay-runner
     environment:
       - FIXTURE_URL=http://fixture:8080
       - API_URL=http://api:8000
@@ -62,11 +60,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: proofpay-web
     ports:
-      - "3000:80"
+      - "127.0.0.1:${PROOFPAY_WEB_PORT:-3000}:80"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
-  pgdata:
+  pgdata17:

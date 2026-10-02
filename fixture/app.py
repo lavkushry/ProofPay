@@ -74,8 +74,6 @@ FIXED_HTML = """<!DOCTYPE html>
 </html>
 """
 
-@router = app
-
 @app.get("/", response_class=HTMLResponse)
 async def home():
     return "<h1>ProofPay Fixture Service</h1><p><a href='/checkout-broken'>Broken Checkout</a> | <a href='/checkout-fixed'>Fixed Checkout</a></p>"

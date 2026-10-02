@@ -39,6 +39,11 @@ frontend/build/
 # Environment and Secrets
 .env
 .env.local
+.env.executor
+.env.*
+!.env.example
+!.env.executor.example
+.pytest_cache/
 
 # OS
 .DS_Store
