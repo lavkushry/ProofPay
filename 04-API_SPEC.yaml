@@ -1,0 +1,5882 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: ProofPay Application API
+  version: 0.1.0
+  description: 'ProofPay compiles the review queue between ''work submitted'' and ''payment released''
+    into executable acceptance checks — and pays only when evidence passes.
+
+
+    Phase 2 contract, not an implemented server. Read docs/00-PROJECT_CONTEXT.md and docs/02-PRD.md. One
+    agency, one fixture, two sandbox recipients, USD, exactly three approved checks and three families.
+    Examples/identifiers are illustrative unless execution evidence says otherwise. Cookie domain mutations
+    require CSRF and Idempotency-Key; internal tool/runner credentials never enter model context. Paid
+    requires a matched actual PayPal item SUCCESS.'
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+- url: http://localhost:8000
+  description: Local Compose API; production cookies require HTTPS.
+tags:
+- name: Health
+- name: Sessions
+- name: Catalog
+- name: Briefs
+- name: Mandates
+- name: Tasks
+- name: Deliveries
+- name: Evidence
+- name: Corrections
+- name: Payments
+- name: Receipts
+- name: Jobs
+- name: Contractor
+- name: Judge
+- name: Webhooks
+- name: Internal AI
+- name: Internal Runner
+security:
+- SessionCookie: []
+paths:
+  /livez:
+    get:
+      operationId: get_liveness
+      summary: get liveness
+      description: Process responsiveness only. No provider/model transaction or secrets.
+      tags:
+      - Health
+      x-roles: []
+      x-requirement-ids:
+      - NFR-15
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: &id001
+                type: string
+                format: uuid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security: []
+  /readyz:
+    get:
+      operationId: get_readiness
+      summary: get readiness
+      description: Database/configuration readiness and worker/runner freshness. No payout created by
+        health probes.
+      tags:
+      - Health
+      x-roles: []
+      x-requirement-ids:
+      - FR-36
+      - NFR-15
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: Required service not ready.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security: []
+  /api/session:
+    post:
+      operationId: create_demo_session
+      summary: create demo session
+      description: Validate configured demo access code; assign one of three existing personas. Creates
+        original judge principal and scoped effective user; grants no provider access.
+      tags:
+      - Sessions
+      x-roles: []
+      x-requirement-ids:
+      - NFR-06
+      - NFR-19
+      responses:
+        '201':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+            Set-Cookie:
+              schema:
+                type: string
+                maxLength: 1024
+              description: Opaque proofpay_session; HttpOnly; Secure; SameSite=Lax; Path=/.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionCreate'
+    get:
+      operationId: get_session
+      summary: get session
+      description: ''
+      tags:
+      - Sessions
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - NFR-06
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+    delete:
+      operationId: delete_session
+      summary: delete session
+      description: Invalidate session and expire cookie. Requires CSRF.
+      tags:
+      - Sessions
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - NFR-06
+      - NFR-19
+      responses:
+        '204':
+          description: Success; no response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+  /api/contractors:
+    get:
+      operationId: list_contractors
+      summary: list contractors
+      description: Exactly two configured sandbox references; no payable receiver address or editable
+        directory.
+      tags:
+      - Catalog
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-01
+      - FR-19
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractorList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+  /api/fixtures/versions:
+    get:
+      operationId: list_fixture_versions
+      summary: list fixture versions
+      description: Trusted versions of one fixture. Assigned contractor receives only allowed artifact
+        choices.
+      tags:
+      - Catalog
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-01
+      - FR-05
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactVersionList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+  /api/briefs:
+    get:
+      operationId: list_briefs
+      summary: list briefs
+      description: ''
+      tags:
+      - Briefs
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-17
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BriefList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: create_brief
+      summary: create brief
+      description: Create first immutable revision, task/demo-run binding, empty mandate container and
+        zero-balance obligation. Validate supported scope and proposed terms; no release authority yet.
+      tags:
+      - Briefs
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-01
+      - FR-17
+      responses:
+        '201':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brief'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BriefCreate'
+  /api/briefs/{brief_id}:
+    get:
+      operationId: get_brief
+      summary: get brief
+      description: ''
+      tags:
+      - Briefs
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-17
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brief'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: brief_id
+        in: path
+        required: true
+        schema: *id001
+  /api/briefs/{brief_id}/revisions:
+    post:
+      operationId: create_brief_revision
+      summary: create brief revision
+      description: Append revision under expected_revision; never overwrite an approved revision.
+      tags:
+      - Briefs
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-17
+      - FR-18
+      responses:
+        '201':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Brief'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: brief_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BriefRevisionCreate'
+  /api/briefs/{brief_id}/compile:
+    post:
+      operationId: compile_brief
+      summary: compile brief
+      description: Queue compilation pinned to revision/digest. Ambiguous result blocks approval; no test
+        code generated.
+      tags:
+      - Briefs
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-02
+      - FR-18
+      - NFR-17
+      responses:
+        '202':
+          description: Durable work acknowledged; inspect referenced job/resource.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedCommand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: brief_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompileRequest'
+  /api/briefs/{brief_id}/compilations:
+    get:
+      operationId: list_compilations
+      summary: list compilations
+      description: ''
+      tags:
+      - Briefs
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-02
+      - FR-18
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompilationList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: brief_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+  /api/compilations/{compilation_id}:
+    get:
+      operationId: get_compilation
+      summary: get compilation
+      description: ''
+      tags:
+      - Briefs
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-02
+      - FR-18
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Compilation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: compilation_id
+        in: path
+        required: true
+        schema: *id001
+  /api/mandates:
+    post:
+      operationId: create_mandate
+      summary: create mandate
+      description: Populate the milestone existing mandate container with its first draft from a ready
+        matching compilation. One mandate/obligation per task; additional drafts use the versions endpoint.
+      tags:
+      - Mandates
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-03
+      - FR-19
+      responses:
+        '201':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MandateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MandateDraftCreate'
+  /api/mandates/{mandate_id}:
+    get:
+      operationId: get_mandate
+      summary: get mandate
+      description: Contractors see only approved versions assigned to their recipient; owner sees permitted
+        draft/history.
+      tags:
+      - Mandates
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-03
+      - FR-20
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mandate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: mandate_id
+        in: path
+        required: true
+        schema: *id001
+  /api/mandates/{mandate_id}/versions:
+    post:
+      operationId: create_mandate_version
+      summary: create mandate version
+      description: New draft; does not supersede until approved. Preserve obligation attempts and budget
+        history.
+      tags:
+      - Mandates
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-03
+      - FR-20
+      responses:
+        '201':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MandateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: mandate_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MandateVersionCreate'
+  /api/mandates/{mandate_id}/versions/{version_id}:
+    get:
+      operationId: get_mandate_version
+      summary: get mandate version
+      description: ''
+      tags:
+      - Mandates
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-03
+      - FR-19
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MandateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: mandate_id
+        in: path
+        required: true
+        schema: *id001
+      - name: version_id
+        in: path
+        required: true
+        schema: *id001
+  /api/mandates/{mandate_id}/versions/{version_id}/approve:
+    post:
+      operationId: approve_mandate
+      summary: approve mandate
+      description: Under shared authority lock, compare displayed digest/current pointer; freeze snapshot/checks/binding.
+        Subsequent payload mutation forbidden.
+      tags:
+      - Mandates
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-03
+      - FR-04
+      - FR-19
+      - FR-20
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MandateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: mandate_id
+        in: path
+        required: true
+        schema: *id001
+      - name: version_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveRequest'
+  /api/tasks:
+    get:
+      operationId: list_tasks
+      summary: list tasks
+      description: AG Grid work queue. Defaults to current demo run plus its labeled genuine completed
+        archive. An explicit demo_run_id filter lists only that run. Archive rows retain original task,
+        obligation and provider IDs; other historical records remain inspectable.
+      tags:
+      - Tasks
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-15
+      - FR-35
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: state
+        in: query
+        schema:
+          type: string
+          enum:
+          - brief_captured
+          - checks_approved
+          - awaiting_delivery
+          - verifying
+          - correction_requested
+          - evidence_passed
+          - payment_initiated
+          - reconciling
+          - paid
+          - failed
+          - unclaimed
+          - cancelled
+      - name: family
+        in: query
+        schema: &id003
+          type: string
+          enum:
+          - responsive_css
+          - api_endpoint
+          - keyboard_accessibility
+      - name: recipient_ref
+        in: query
+        schema:
+          type: string
+          enum:
+          - contractor_maya
+          - contractor_leo
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - updated_desc
+          - created_desc
+          - amount_asc
+      - name: demo_run_id
+        in: query
+        schema: *id001
+  /api/tasks/{task_id}:
+    get:
+      operationId: get_task
+      summary: get task
+      description: ''
+      tags:
+      - Tasks
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-15
+      - FR-34
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+  /api/tasks/{task_id}/deliveries:
+    get:
+      operationId: list_deliveries
+      summary: list deliveries
+      description: ''
+      tags:
+      - Deliveries
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-05
+      - FR-21
+      - FR-38
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      operationId: submit_delivery
+      summary: submit delivery
+      description: Assigned contractor only. Resolve trusted artifact digest; reject stale version or
+        replacement after financial initiation.
+      tags:
+      - Deliveries
+      x-roles:
+      - contractor
+      x-requirement-ids:
+      - FR-05
+      - FR-08
+      - FR-21
+      - FR-22
+      responses:
+        '201':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveryCreate'
+  /api/deliveries/{delivery_id}:
+    get:
+      operationId: get_delivery
+      summary: get delivery
+      description: ''
+      tags:
+      - Deliveries
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-05
+      - FR-21
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: delivery_id
+        in: path
+        required: true
+        schema: *id001
+  /api/tasks/{task_id}/evidence:
+    get:
+      operationId: list_evidence
+      summary: list evidence
+      description: ''
+      tags:
+      - Evidence
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-23
+      - FR-38
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceBundleList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+  /api/evidence/{bundle_id}:
+    get:
+      operationId: get_evidence_bundle
+      summary: get evidence bundle
+      description: ''
+      tags:
+      - Evidence
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-06
+      - FR-07
+      - FR-23
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceBundle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: bundle_id
+        in: path
+        required: true
+        schema: *id001
+  /api/evidence/artifacts/{artifact_id}:
+    get:
+      operationId: get_evidence_artifact
+      summary: get evidence artifact
+      description: Authorized actual evidence bytes; response media matches manifest and digest. Missing/tampered
+        content cannot become passing evidence.
+      tags:
+      - Evidence
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-23
+      - NFR-13
+      responses:
+        '200':
+          description: Actual stored artifact.
+          headers:
+            ETag:
+              schema:
+                type: string
+                maxLength: 80
+            X-Content-SHA256:
+              schema: &id004
+                type: string
+                maxLength: 64
+                pattern: ^[0-9a-f]{64}$
+            X-Request-ID:
+              schema: *id001
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: artifact_id
+        in: path
+        required: true
+        schema: *id001
+  /api/tasks/{task_id}/corrections:
+    get:
+      operationId: list_corrections
+      summary: list corrections
+      description: ''
+      tags:
+      - Corrections
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-08
+      - FR-34
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorrectionList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+  /api/tasks/{task_id}/review-resolutions:
+    post:
+      operationId: resolve_review
+      summary: resolve review
+      description: Only current all-pass trusted checks plus uncertain review may receive grounded resolution.
+        Preserve original; failed executable check is never waived.
+      tags:
+      - Evidence
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-09
+      - FR-25
+      responses:
+        '202':
+          description: Durable work acknowledged; inspect referenced job/resource.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedCommand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewResolutionCreate'
+  /api/tasks/{task_id}/payment-requests:
+    post:
+      operationId: request_release_evaluation
+      summary: request release evaluation
+      description: Optional reevaluation of already approved conditions. Main path agent requests automatically;
+        this endpoint cannot override any financial term or guard.
+      tags:
+      - Payments
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-04
+      - FR-10
+      - FR-26
+      responses:
+        '202':
+          description: Durable work acknowledged; inspect referenced job/resource.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedCommand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+  /api/tasks/{task_id}/payments:
+    get:
+      operationId: get_task_payments
+      summary: get task payments
+      description: ''
+      tags:
+      - Payments
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-11
+      - FR-32
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskPayments'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+  /api/payments/{attempt_id}:
+    get:
+      operationId: get_payment
+      summary: get payment
+      description: ''
+      tags:
+      - Payments
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-11
+      - FR-32
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentAttempt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: attempt_id
+        in: path
+        required: true
+        schema: *id001
+  /api/payments/{attempt_id}/reconcile:
+    post:
+      operationId: reconcile_payment
+      summary: reconcile payment
+      description: Coalesce allowed status inspection for the existing attempt. No new initiation.
+      tags:
+      - Payments
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-11
+      - FR-30
+      responses:
+        '202':
+          description: Durable work acknowledged; inspect referenced job/resource.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedCommand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: attempt_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReconcileRequest'
+  /api/payments/{attempt_id}/retry:
+    post:
+      operationId: retry_payment
+      summary: retry payment
+      description: Confirmed eligible nonpayment only; same obligation, remaining approved attempts and
+        all current guards. Unknown/unclaimed/blocked outcome cannot create another attempt.
+      tags:
+      - Payments
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-29
+      - FR-14
+      responses:
+        '202':
+          description: Durable work acknowledged; inspect referenced job/resource.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedCommand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: attempt_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetryRequest'
+  /api/payments/{attempt_id}/cancel:
+    post:
+      operationId: cancel_unclaimed_payment
+      summary: cancel unclaimed payment
+      description: Queue eligibility refresh/cancel/reconcile. No returned label or reserve release from
+        HTTP acknowledgement.
+      tags:
+      - Payments
+      x-roles:
+      - owner
+      x-requirement-ids:
+      - FR-12
+      - FR-31
+      responses:
+        '202':
+          description: Durable work acknowledged; inspect referenced job/resource.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedCommand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: attempt_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+  /api/tasks/{task_id}/receipt:
+    get:
+      operationId: get_receipt
+      summary: get receipt
+      description: ''
+      tags:
+      - Receipts
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-13
+      - FR-33
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+  /api/jobs/{job_id}:
+    get:
+      operationId: get_job
+      summary: get job
+      description: Only jobs associated with visible task/actor context; service runner does not gain
+        this route.
+      tags:
+      - Jobs
+      x-roles:
+      - owner
+      - contractor
+      x-requirement-ids:
+      - FR-36
+      - NFR-10
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: *id001
+  /api/contractor/tasks:
+    get:
+      operationId: list_contractor_tasks
+      summary: list contractor tasks
+      description: Fixed to session recipient; no recipient override parameter.
+      tags:
+      - Contractor
+      x-roles:
+      - contractor
+      x-requirement-ids:
+      - FR-15
+      - FR-34
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+  /api/contractor/tasks/{task_id}:
+    get:
+      operationId: get_contractor_task
+      summary: get contractor task
+      description: ''
+      tags:
+      - Contractor
+      x-roles:
+      - contractor
+      x-requirement-ids:
+      - FR-34
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+  /api/contractor/tasks/{task_id}/deliveries:
+    post:
+      operationId: submit_contractor_delivery
+      summary: submit contractor delivery
+      description: Portal alias of submit_delivery; same service, idempotency and authorization rules.
+      tags:
+      - Contractor
+      x-roles:
+      - contractor
+      x-requirement-ids:
+      - FR-05
+      - FR-08
+      - FR-34
+      responses:
+        '201':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeliveryCreate'
+  /api/contractor/tasks/{task_id}/corrections:
+    get:
+      operationId: get_contractor_corrections
+      summary: get contractor corrections
+      description: ''
+      tags:
+      - Contractor
+      x-roles:
+      - contractor
+      x-requirement-ids:
+      - FR-08
+      - FR-34
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorrectionList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+  /api/contractor/tasks/{task_id}/receipt:
+    get:
+      operationId: get_contractor_receipt
+      summary: get contractor receipt
+      description: ''
+      tags:
+      - Contractor
+      x-roles:
+      - contractor
+      x-requirement-ids:
+      - FR-13
+      - FR-34
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Receipt'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema: *id001
+  /api/judge/workspace:
+    get:
+      operationId: get_judge_workspace
+      summary: get judge workspace
+      description: Requires original judge principal. Readiness summary does not grant owner actions while
+        effective role is contractor.
+      tags:
+      - Judge
+      x-roles:
+      - judge_principal
+      x-requirement-ids:
+      - FR-16
+      - FR-35
+      - FR-36
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JudgeWorkspace'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+  /api/judge/role:
+    post:
+      operationId: switch_judge_role
+      summary: switch judge role
+      description: Switch only among preassigned personas; rotate session and CSRF; preserve original
+        principal in audit.
+      tags:
+      - Sessions
+      x-roles:
+      - judge_principal
+      x-requirement-ids:
+      - NFR-06
+      - NFR-19
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+            Set-Cookie:
+              schema:
+                type: string
+                maxLength: 1024
+              description: Rotated opaque session cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleSwitch'
+  /api/judge/workspace/seed:
+    post:
+      operationId: seed_judge_workspace
+      summary: seed judge workspace
+      description: Idempotent seed of fresh mid-flow case and real archived completed case. Missing genuine
+        archive stays pending; no fabricated provider IDs.
+      tags:
+      - Judge
+      x-roles:
+      - judge_principal_with_owner_role
+      x-requirement-ids:
+      - FR-35
+      - FR-16
+      responses:
+        '202':
+          description: Durable work acknowledged; inspect referenced job/resource.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedCommand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeedRequest'
+  /api/judge/workspace/reset:
+    post:
+      operationId: reset_judge_workspace
+      summary: reset judge workspace
+      description: Serialize with dispatch; defer if unresolved attempts. Fresh namespace only; retain
+        ledger, attempts, verified dedup, evidence and audit; never refill wallet.
+      tags:
+      - Judge
+      x-roles:
+      - judge_principal_with_owner_role
+      x-requirement-ids:
+      - FR-16
+      - FR-37
+      - NFR-18
+      responses:
+        '202':
+          description: Durable work acknowledged; inspect referenced job/resource.
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedCommand'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetRequest'
+  /api/judge/replays:
+    post:
+      operationId: replay_stored_event
+      summary: replay stored event
+      description: Replay only a stored delivery/decision/verified event/outbox reference; resolve existing
+        attempt. Caller supplies no raw verified webhook body.
+      tags:
+      - Judge
+      x-roles:
+      - judge_principal_with_owner_role
+      x-requirement-ids:
+      - FR-14
+      - NFR-02
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReplayResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - SessionCookie: []
+      parameters:
+      - $ref: '#/components/parameters/Csrf'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplayRequest'
+  /api/webhooks/paypal:
+    post:
+      operationId: receive_paypal_webhook
+      summary: receive paypal webhook
+      description: Max64KiB; raw bytes/header preservation and durable quarantine before HTTP200. No financial
+        mutation. Executor verifies genuine event using configured webhook ID; simulator is not financial
+        proof.
+      tags:
+      - Webhooks
+      x-roles: []
+      x-requirement-ids:
+      - FR-28
+      - FR-11
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookReceived'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEnvelope'
+      parameters:
+      - name: PAYPAL-AUTH-ALGO
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 4096
+      - name: PAYPAL-CERT-URL
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 4096
+      - name: PAYPAL-TRANSMISSION-ID
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 4096
+      - name: PAYPAL-TRANSMISSION-SIG
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 4096
+      - name: PAYPAL-TRANSMISSION-TIME
+        in: header
+        required: true
+        schema:
+          type: string
+          maxLength: 4096
+  /internal/ai/tools/propose-checks:
+    post:
+      operationId: tool_propose_checks
+      summary: tool propose checks
+      description: Actual compiler inference on authorized brief/manifest; finite schema repair. Job context
+        supplies tenant and stage.
+      tags:
+      - Internal AI
+      x-roles:
+      - worker_service
+      x-requirement-ids:
+      - FR-02
+      - FR-18
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckProposal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - WorkerServiceToken: []
+      parameters:
+      - $ref: '#/components/parameters/WorkflowJob'
+      - $ref: '#/components/parameters/WorkflowLease'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProposeChecksInput'
+  /internal/ai/tools/inspect-evidence:
+    post:
+      operationId: tool_inspect_evidence
+      summary: tool inspect evidence
+      description: Resolve current manifest and actual images/results; actual reviewer inference; validate
+        every cited reference and hard-fail dominance.
+      tags:
+      - Internal AI
+      x-roles:
+      - worker_service
+      x-requirement-ids:
+      - FR-06
+      - FR-07
+      - FR-24
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceReview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - WorkerServiceToken: []
+      parameters:
+      - $ref: '#/components/parameters/WorkflowJob'
+      - $ref: '#/components/parameters/WorkflowLease'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InspectEvidenceInput'
+  /internal/ai/tools/request-correction:
+    post:
+      operationId: tool_request_correction
+      summary: tool request correction
+      description: Validate findings against the job review; persist internal portal message derived from
+        actual grounded rationale. No external messaging.
+      tags:
+      - Internal AI
+      x-roles:
+      - worker_service
+      x-requirement-ids:
+      - FR-08
+      - FR-24
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorrectionToolResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - WorkerServiceToken: []
+      parameters:
+      - $ref: '#/components/parameters/WorkflowJob'
+      - $ref: '#/components/parameters/WorkflowLease'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestCorrectionInput'
+  /internal/ai/tools/request-payout:
+    post:
+      operationId: tool_request_payout
+      summary: tool request payout
+      description: Create grounded decision request; executor later independently checks immutable authority.
+        No provider credentials or amount/receiver input.
+      tags:
+      - Internal AI
+      x-roles:
+      - worker_service
+      x-requirement-ids:
+      - FR-04
+      - FR-10
+      - FR-26
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PayoutToolResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - WorkerServiceToken: []
+      parameters:
+      - $ref: '#/components/parameters/WorkflowJob'
+      - $ref: '#/components/parameters/WorkflowLease'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestPayoutInput'
+  /internal/runner/jobs/claim:
+    post:
+      operationId: claim_runner_job
+      summary: claim runner job
+      description: Claim one job or recover this worker existing lease. Service token has runner audience
+        only.
+      tags:
+      - Internal Runner
+      x-roles:
+      - runner_service
+      x-requirement-ids:
+      - FR-06
+      - NFR-04
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+        '204':
+          description: No eligible job.
+      security:
+      - RunnerServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerClaim'
+  /internal/runner/jobs/{job_id}/heartbeat:
+    post:
+      operationId: heartbeat_runner_job
+      summary: heartbeat runner job
+      description: Extend only current matching lease; stale lease denied.
+      tags:
+      - Internal Runner
+      x-roles:
+      - runner_service
+      x-requirement-ids:
+      - NFR-10
+      responses:
+        '204':
+          description: Success; no response body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - RunnerServiceToken: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: *id001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerHeartbeat'
+  /internal/runner/jobs/{job_id}/complete:
+    post:
+      operationId: complete_runner_job
+      summary: complete runner job
+      description: Validate lease/digests/results/media before immutable bundle commit. Same job and same
+        completion digest replays bundle; conflicting completion rejected.
+      tags:
+      - Internal Runner
+      x-roles:
+      - runner_service
+      x-requirement-ids:
+      - FR-06
+      - FR-22
+      - NFR-13
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Request-ID:
+              schema: *id001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunnerCompletionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Invalid'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/Unexpected'
+      security:
+      - RunnerServiceToken: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: *id001
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunnerCompletion'
+components:
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: proofpay_session
+      description: Opaque session; role/agency resolved server-side.
+    WorkerServiceToken:
+      type: http
+      scheme: bearer
+      description: Application worker audience; job/stage/lease context checked. Never a PayPal token.
+    RunnerServiceToken:
+      type: http
+      scheme: bearer
+      description: Distinct runner audience; no app financial or AI access.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: *id001
+      description: 'Required for domain mutations. Scope: agency, original principal, effective persona,
+        canonical command family and key. Contractor delivery aliases share submit_delivery. Recheck authorization
+        before replaying original result; changed digest gives 409. Retained across reset.'
+    Csrf:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 128
+      description: Session-bound token; required with cookie authentication on mutation.
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+        maxLength: 256
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    WorkflowJob:
+      name: X-Workflow-Job-ID
+      in: header
+      required: true
+      schema: *id001
+    WorkflowLease:
+      name: X-Workflow-Lease-Token
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 128
+      description: Backend context only; never supplied to the LLM. Must match active job lease and permitted
+        stage.
+  responses:
+    BadRequest:
+      description: Malformed JSON/header or duplicate keys.
+      headers:
+        X-Request-ID:
+          schema: *id001
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing/expired session or service credential.
+      headers:
+        X-Request-ID:
+          schema: *id001
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Role, CSRF, service audience or stage denied.
+      headers:
+        X-Request-ID:
+          schema: *id001
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource absent or inaccessible in agency/contractor scope.
+      headers:
+        X-Request-ID:
+          schema: *id001
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Stale digest/version, idempotency conflict or workspace busy.
+      headers:
+        X-Request-ID:
+          schema: *id001
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Invalid:
+      description: Schema, scope, parameter, money or authority input invalid.
+      headers:
+        X-Request-ID:
+          schema: *id001
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Request limit reached; retry after the supplied delay.
+      headers:
+        X-Request-ID:
+          schema: *id001
+        Retry-After:
+          schema:
+            type: string
+            maxLength: 80
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unavailable:
+      description: Durable storage or required service unavailable.
+      headers:
+        X-Request-ID:
+          schema: *id001
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unexpected:
+      description: Unexpected error; use request_id without exposed secrets.
+      headers:
+        X-Request-ID:
+          schema: *id001
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Money:
+      type: object
+      additionalProperties: false
+      properties:
+        currency:
+          type: string
+          enum:
+          - USD
+        value:
+          type: string
+          maxLength: 16
+          pattern: ^(0|[1-9][0-9]{0,8})\.[0-9]{2}$
+      required:
+      - currency
+      - value
+    PositiveMoney:
+      type: object
+      additionalProperties: false
+      properties:
+        currency:
+          type: string
+          enum:
+          - USD
+        value:
+          type: string
+          maxLength: 16
+          pattern: ^(?!0\.00$)(0|[1-9][0-9]{0,8})\.[0-9]{2}$
+      required:
+      - currency
+      - value
+    PaymentTerms:
+      type: object
+      additionalProperties: false
+      properties:
+        recipient_ref:
+          type: string
+          enum:
+          - contractor_maya
+          - contractor_leo
+        amount:
+          $ref: '#/components/schemas/PositiveMoney'
+        principal_cap:
+          $ref: '#/components/schemas/PositiveMoney'
+        max_attempts:
+          type: integer
+          minimum: 1
+          maximum: 3
+        expires_at: &id002
+          type: string
+          format: date-time
+          pattern: .*(Z|[+-][0-9]{2}:[0-9]{2})$
+      required:
+      - recipient_ref
+      - amount
+      - principal_cap
+      - max_attempts
+      - expires_at
+      description: Cap must cover amount; expiry must be future at approval. Workspace allowance remains
+        an independent durable control.
+    Check_viewport_no_horizontal_overflow:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          const: viewport_no_horizontal_overflow
+        params:
+          type: object
+          additionalProperties: false
+          properties:
+            width:
+              type: integer
+              enum:
+              - 320
+            target_ref:
+              type: string
+              enum:
+              - checkout
+          required:
+          - width
+          - target_ref
+        compiled_by:
+          type: string
+          enum:
+          - ai
+        approved:
+          type: boolean
+      required:
+      - check_id
+      - type
+      - params
+      - compiled_by
+      - approved
+    Check_cart_total_unchanged:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          const: cart_total_unchanged
+        params:
+          type: object
+          additionalProperties: false
+          properties:
+            baseline_ref:
+              type: string
+              enum:
+              - fixture_cart_v1
+          required:
+          - baseline_ref
+        compiled_by:
+          type: string
+          enum:
+          - ai
+        approved:
+          type: boolean
+      required:
+      - check_id
+      - type
+      - params
+      - compiled_by
+      - approved
+    Check_keyboard_checkout_reachable:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          const: keyboard_checkout_reachable
+        params:
+          type: object
+          additionalProperties: false
+          properties:
+            control_ref:
+              type: string
+              enum:
+              - checkout_pay
+          required:
+          - control_ref
+        compiled_by:
+          type: string
+          enum:
+          - ai
+        approved:
+          type: boolean
+      required:
+      - check_id
+      - type
+      - params
+      - compiled_by
+      - approved
+    Check_api_status:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          const: api_status
+        params:
+          type: object
+          additionalProperties: false
+          properties:
+            endpoint_ref:
+              type: string
+              enum:
+              - cart_total
+            expected_status:
+              type: integer
+              enum:
+              - 200
+          required:
+          - endpoint_ref
+          - expected_status
+        compiled_by:
+          type: string
+          enum:
+          - ai
+        approved:
+          type: boolean
+      required:
+      - check_id
+      - type
+      - params
+      - compiled_by
+      - approved
+    Check_api_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          const: api_schema
+        params:
+          type: object
+          additionalProperties: false
+          properties:
+            endpoint_ref:
+              type: string
+              enum:
+              - cart_total
+            schema_ref:
+              type: string
+              enum:
+              - cart_total_response_v1
+          required:
+          - endpoint_ref
+          - schema_ref
+        compiled_by:
+          type: string
+          enum:
+          - ai
+        approved:
+          type: boolean
+      required:
+      - check_id
+      - type
+      - params
+      - compiled_by
+      - approved
+    Check_api_total_matches_fixture:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          const: api_total_matches_fixture
+        params:
+          type: object
+          additionalProperties: false
+          properties:
+            endpoint_ref:
+              type: string
+              enum:
+              - cart_total
+            baseline_ref:
+              type: string
+              enum:
+              - fixture_cart_v1
+          required:
+          - endpoint_ref
+          - baseline_ref
+        compiled_by:
+          type: string
+          enum:
+          - ai
+        approved:
+          type: boolean
+      required:
+      - check_id
+      - type
+      - params
+      - compiled_by
+      - approved
+    Check_keyboard_activation:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          const: keyboard_activation
+        params:
+          type: object
+          additionalProperties: false
+          properties:
+            control_ref:
+              type: string
+              enum:
+              - checkout_pay
+            key:
+              type: string
+              enum:
+              - Enter
+          required:
+          - control_ref
+          - key
+        compiled_by:
+          type: string
+          enum:
+          - ai
+        approved:
+          type: boolean
+      required:
+      - check_id
+      - type
+      - params
+      - compiled_by
+      - approved
+    Check_accessible_control_name:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          const: accessible_control_name
+        params:
+          type: object
+          additionalProperties: false
+          properties:
+            control_ref:
+              type: string
+              enum:
+              - checkout_pay
+            name_ref:
+              type: string
+              enum:
+              - checkout_pay_name_v1
+          required:
+          - control_ref
+          - name_ref
+        compiled_by:
+          type: string
+          enum:
+          - ai
+        approved:
+          type: boolean
+      required:
+      - check_id
+      - type
+      - params
+      - compiled_by
+      - approved
+    AcceptanceCheck:
+      oneOf:
+      - $ref: '#/components/schemas/Check_viewport_no_horizontal_overflow'
+      - $ref: '#/components/schemas/Check_cart_total_unchanged'
+      - $ref: '#/components/schemas/Check_keyboard_checkout_reachable'
+      - $ref: '#/components/schemas/Check_api_status'
+      - $ref: '#/components/schemas/Check_api_schema'
+      - $ref: '#/components/schemas/Check_api_total_matches_fixture'
+      - $ref: '#/components/schemas/Check_keyboard_activation'
+      - $ref: '#/components/schemas/Check_accessible_control_name'
+    CheckProposal:
+      type: object
+      additionalProperties: false
+      properties:
+        checks:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/AcceptanceCheck'
+            minItems: 3
+            maxItems: 3
+          - type: array
+            items:
+              $ref: '#/components/schemas/AcceptanceCheck'
+            minItems: 0
+            maxItems: 0
+        ambiguities:
+          type: array
+          items:
+            type: string
+            maxLength: 600
+          minItems: 0
+          maxItems: 5
+        clarifying_questions:
+          type: array
+          items:
+            type: string
+            maxLength: 600
+          minItems: 0
+          maxItems: 5
+      required:
+      - checks
+      - ambiguities
+      - clarifying_questions
+      description: Approval requires exactly three distinct checks with approved=false in proposal and
+        true in frozen approval. Unresolved ambiguity returns zero checks; family semantics and manifest
+        bindings are checked server-side.
+    SessionCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        access_code:
+          type: string
+          maxLength: 256
+          minLength: 1
+        persona:
+          type: string
+          enum:
+          - owner
+          - contractor_maya
+          - contractor_leo
+      required:
+      - access_code
+      - persona
+    Session:
+      type: object
+      additionalProperties: false
+      properties:
+        principal_id: *id001
+        effective_user_id: *id001
+        agency_id: *id001
+        role:
+          type: string
+          enum:
+          - owner
+          - contractor
+        recipient_ref:
+          oneOf:
+          - type: string
+            enum:
+            - contractor_maya
+            - contractor_leo
+          - type: 'null'
+        is_judge:
+          type: boolean
+        csrf_token:
+          type: string
+          maxLength: 128
+        expires_at: *id002
+      required:
+      - principal_id
+      - effective_user_id
+      - agency_id
+      - role
+      - recipient_ref
+      - is_judge
+      - csrf_token
+      - expires_at
+    RoleSwitch:
+      type: object
+      additionalProperties: false
+      properties:
+        persona:
+          type: string
+          enum:
+          - owner
+          - contractor_maya
+          - contractor_leo
+      required:
+      - persona
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          maxLength: 80
+        message:
+          type: string
+          maxLength: 1000
+        request_id: *id001
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              field:
+                oneOf:
+                - type: string
+                  maxLength: 200
+                - type: 'null'
+              reason:
+                type: string
+                maxLength: 600
+            required:
+            - field
+            - reason
+          minItems: 0
+          maxItems: 30
+        retryable:
+          type: boolean
+      required:
+      - code
+      - message
+      - request_id
+      - details
+      - retryable
+      description: Codes include INVALID_REQUEST, UNSUPPORTED_SCOPE, UNAUTHORIZED, FORBIDDEN, NOT_FOUND,
+        STALE_REVISION, IDEMPOTENCY_CONFLICT, WORKSPACE_BUSY, AUTHORITY_EXPIRED, GUARD_FAILED and DEPENDENCY_UNAVAILABLE.
+        No secrets or raw receiver values.
+    AcceptedCommand:
+      type: object
+      additionalProperties: false
+      properties:
+        command_id: *id001
+        state:
+          type: string
+          enum:
+          - accepted
+          - held
+          - deduplicated
+        resource_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        job_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        existing_attempt_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        hold_reasons:
+          type: array
+          items:
+            type: string
+            maxLength: 160
+          minItems: 0
+          maxItems: 12
+      required:
+      - command_id
+      - state
+      - resource_id
+      - job_id
+      - existing_attempt_id
+      - hold_reasons
+      description: 202 acknowledges durable work only. Held reset/payment work is persisted with reasons;
+        it has not dispatched.
+    Health:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+          - degraded
+          - unavailable
+        checked_at: *id002
+        dependencies:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              name:
+                type: string
+                maxLength: 80
+              status:
+                type: string
+                enum:
+                - ok
+                - stale
+                - unavailable
+              last_seen_at:
+                oneOf:
+                - *id002
+                - type: 'null'
+            required:
+            - name
+            - status
+            - last_seen_at
+          minItems: 0
+          maxItems: 10
+      required:
+      - status
+      - checked_at
+      - dependencies
+    Contractor:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        recipient_ref:
+          type: string
+          enum:
+          - contractor_maya
+          - contractor_leo
+        display_name:
+          type: string
+          maxLength: 120
+        environment:
+          type: string
+          enum:
+          - sandbox
+      required:
+      - id
+      - recipient_ref
+      - display_name
+      - environment
+    ArtifactVersion:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        fixture_ref:
+          type: string
+          enum:
+          - checkout_fixture
+        artifact_ref:
+          type: string
+          maxLength: 100
+        family: *id003
+        digest: *id004
+        label:
+          type: string
+          maxLength: 150
+      required:
+      - id
+      - fixture_ref
+      - artifact_ref
+      - family
+      - digest
+      - label
+    BriefCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          maxLength: 160
+          minLength: 1
+        text:
+          type: string
+          maxLength: 4000
+          minLength: 1
+        family: *id003
+        fixture_ref:
+          type: string
+          enum:
+          - checkout_fixture
+        terms:
+          $ref: '#/components/schemas/PaymentTerms'
+      required:
+      - title
+      - text
+      - family
+      - fixture_ref
+      - terms
+    BriefRevisionCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_revision:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+          maxLength: 160
+          minLength: 1
+        text:
+          type: string
+          maxLength: 4000
+          minLength: 1
+        family: *id003
+        terms:
+          $ref: '#/components/schemas/PaymentTerms'
+      required:
+      - expected_revision
+      - title
+      - text
+      - family
+      - terms
+    Brief:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        task_id: *id001
+        revision_id: *id001
+        revision:
+          type: integer
+          minimum: 1
+        digest: *id004
+        title:
+          type: string
+          maxLength: 160
+        text:
+          type: string
+          maxLength: 4000
+        family: *id003
+        fixture_ref:
+          type: string
+          enum:
+          - checkout_fixture
+        terms:
+          $ref: '#/components/schemas/PaymentTerms'
+        created_at: *id002
+        updated_at: *id002
+      required:
+      - id
+      - task_id
+      - revision_id
+      - revision
+      - digest
+      - title
+      - text
+      - family
+      - fixture_ref
+      - terms
+      - created_at
+      - updated_at
+    CompileRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        brief_revision_id: *id001
+        expected_digest: *id004
+      required:
+      - brief_revision_id
+      - expected_digest
+    Compilation:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        brief_revision_id: *id001
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - ready
+          - ambiguous
+          - failed
+          - stale
+        proposal:
+          oneOf:
+          - $ref: '#/components/schemas/CheckProposal'
+          - type: 'null'
+        interaction_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        error:
+          oneOf:
+          - $ref: '#/components/schemas/Error'
+          - type: 'null'
+        created_at: *id002
+      required:
+      - id
+      - brief_revision_id
+      - status
+      - proposal
+      - interaction_id
+      - error
+      - created_at
+    MandateDraftCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        task_id: *id001
+        brief_revision_id: *id001
+        compilation_id: *id001
+        terms:
+          $ref: '#/components/schemas/PaymentTerms'
+      required:
+      - task_id
+      - brief_revision_id
+      - compilation_id
+      - terms
+    MandateVersionCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        brief_revision_id: *id001
+        compilation_id: *id001
+        terms:
+          $ref: '#/components/schemas/PaymentTerms'
+        expected_current_version_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+      required:
+      - brief_revision_id
+      - compilation_id
+      - terms
+      - expected_current_version_id
+    ApproveRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_draft_digest: *id004
+        expected_current_version_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+      required:
+      - expected_draft_digest
+      - expected_current_version_id
+    MandatePayload:
+      type: object
+      additionalProperties: false
+      properties:
+        mandate_id: *id001
+        version:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+          - draft
+          - approved
+        payer:
+          type: object
+          additionalProperties: false
+          properties:
+            account_ref:
+              type: string
+              enum:
+              - payer_sandbox_us
+          required:
+          - account_ref
+        payee:
+          type: object
+          additionalProperties: false
+          properties:
+            recipient_ref:
+              type: string
+              enum:
+              - contractor_maya
+              - contractor_leo
+            display_name:
+              type: string
+              maxLength: 120
+            email_hash: *id004
+          required:
+          - recipient_ref
+          - display_name
+          - email_hash
+        amount:
+          $ref: '#/components/schemas/PositiveMoney'
+        budget:
+          type: object
+          additionalProperties: false
+          properties:
+            max_total:
+              type: string
+              maxLength: 16
+              pattern: ^(0|[1-9][0-9]{0,8})\.[0-9]{2}$
+            max_attempts:
+              type: integer
+              minimum: 1
+              maximum: 3
+          required:
+          - max_total
+          - max_attempts
+        authority:
+          type: object
+          additionalProperties: false
+          properties:
+            type:
+              type: string
+              enum:
+              - conditional_release
+            condition:
+              type: string
+              enum:
+              - all checks pass
+            expires_at: *id002
+          required:
+          - type
+          - condition
+          - expires_at
+        acceptance_checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcceptanceCheck'
+          minItems: 3
+          maxItems: 3
+        audit:
+          type: object
+          additionalProperties: false
+          properties:
+            approved_by:
+              oneOf:
+              - *id001
+              - type: 'null'
+            approved_at:
+              oneOf:
+              - *id002
+              - type: 'null'
+            immutable:
+              type: boolean
+          required:
+          - approved_by
+          - approved_at
+          - immutable
+      required:
+      - mandate_id
+      - version
+      - status
+      - payer
+      - payee
+      - amount
+      - budget
+      - authority
+      - acceptance_checks
+      - audit
+      description: Seeded mandate skeleton. Approved snapshot status/audit remain frozen; current lifecycle
+        state is outside this payload. Protected receiver is never public.
+    MandateVersion:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        mandate_id: *id001
+        version:
+          type: integer
+          minimum: 1
+        lifecycle_state:
+          type: string
+          enum:
+          - draft
+          - approved
+          - expired
+          - superseded
+          - exhausted
+        digest: *id004
+        snapshot:
+          $ref: '#/components/schemas/MandatePayload'
+        created_at: *id002
+      required:
+      - id
+      - mandate_id
+      - version
+      - lifecycle_state
+      - digest
+      - snapshot
+      - created_at
+    Mandate:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        task_id: *id001
+        current_version_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/MandateVersion'
+          minItems: 0
+          maxItems: 50
+      required:
+      - id
+      - task_id
+      - current_version_id
+      - versions
+    Task:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        agency_id: *id001
+        demo_run_id: *id001
+        is_featured_archive:
+          type: boolean
+        brief_id: *id001
+        title:
+          type: string
+          maxLength: 160
+        family: *id003
+        contractor:
+          $ref: '#/components/schemas/Contractor'
+        amount:
+          $ref: '#/components/schemas/PositiveMoney'
+        state:
+          type: string
+          enum:
+          - brief_captured
+          - checks_approved
+          - awaiting_delivery
+          - verifying
+          - correction_requested
+          - evidence_passed
+          - payment_initiated
+          - reconciling
+          - paid
+          - failed
+          - unclaimed
+          - cancelled
+        hold_reasons:
+          type: array
+          items:
+            type: string
+            maxLength: 160
+          minItems: 0
+          maxItems: 12
+        review_required:
+          type: boolean
+        version:
+          type: integer
+          minimum: 1
+        mandate_version_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        current_delivery_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        current_bundle_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        existing_attempt_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        allowed_actions:
+          type: array
+          items:
+            type: string
+            enum:
+            - compile
+            - approve
+            - submit_delivery
+            - resolve_review
+            - request_payout
+            - reconcile_payment
+            - retry_payment
+            - cancel_unclaimed
+            - reset
+            - replay
+          minItems: 0
+          maxItems: 10
+        updated_at: *id002
+      required:
+      - id
+      - agency_id
+      - demo_run_id
+      - is_featured_archive
+      - brief_id
+      - title
+      - family
+      - contractor
+      - amount
+      - state
+      - hold_reasons
+      - review_required
+      - version
+      - mandate_version_id
+      - current_delivery_id
+      - current_bundle_id
+      - existing_attempt_id
+      - allowed_actions
+      - updated_at
+    DeliveryCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        artifact_version_id: *id001
+        mandate_version_id: *id001
+        expected_task_version:
+          type: integer
+          minimum: 1
+        claim:
+          type: string
+          maxLength: 4000
+          minLength: 1
+      required:
+      - artifact_version_id
+      - mandate_version_id
+      - expected_task_version
+      - claim
+    Delivery:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        task_id: *id001
+        mandate_version_id: *id001
+        artifact_version_id: *id001
+        artifact_digest: *id004
+        claim:
+          type: string
+          maxLength: 4000
+        claim_ref: &id005
+          type: string
+          maxLength: 64
+          pattern: ^(claim|result|screenshot|manifest):[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$
+        sequence:
+          type: integer
+          minimum: 1
+        previous_delivery_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        is_current:
+          type: boolean
+        verification_job_id: *id001
+        created_at: *id002
+      required:
+      - id
+      - task_id
+      - mandate_version_id
+      - artifact_version_id
+      - artifact_digest
+      - claim
+      - claim_ref
+      - sequence
+      - previous_delivery_id
+      - is_current
+      - verification_job_id
+      - created_at
+    EvidenceArtifact:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        ref:
+          oneOf:
+          - type: string
+            maxLength: 64
+            pattern: ^screenshot:[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$
+          - type: 'null'
+        check_id:
+          oneOf:
+          - type: string
+            enum:
+            - C01
+            - C02
+            - C03
+          - type: 'null'
+        media_type:
+          type: string
+          enum:
+          - image/png
+          - application/json
+        sha256: *id004
+        size_bytes:
+          type: integer
+          minimum: 0
+          maximum: 524288
+        download_path:
+          type: string
+          maxLength: 256
+      required:
+      - id
+      - ref
+      - check_id
+      - media_type
+      - sha256
+      - size_bytes
+      - download_path
+      description: PNG receives a screenshot ref; JSON artifact ref is null and downloads by artifact
+        ID. Its trusted result citation appears in results[]. JSON bytes <=64 KiB, PNG <=512 KiB; these
+        media-dependent bounds are server-enforced.
+    CheckResult:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        ref: *id005
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        type:
+          type: string
+          enum:
+          - viewport_no_horizontal_overflow
+          - cart_total_unchanged
+          - keyboard_checkout_reachable
+          - api_status
+          - api_schema
+          - api_total_matches_fixture
+          - keyboard_activation
+          - accessible_control_name
+        outcome:
+          type: string
+          enum:
+          - pass
+          - fail
+          - error
+        observations:
+          type: object
+          additionalProperties: true
+        artifact_refs:
+          type: array
+          items: *id005
+          minItems: 0
+          maxItems: 4
+        completed_at: *id002
+      required:
+      - id
+      - ref
+      - check_id
+      - type
+      - outcome
+      - observations
+      - artifact_refs
+      - completed_at
+    PerCheckReview:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        verdict:
+          type: string
+          enum:
+          - pass
+          - fail
+          - uncertain
+        rationale:
+          type: string
+          maxLength: 600
+        evidence_refs:
+          type: array
+          items: *id005
+          minItems: 1
+          maxItems: 8
+      required:
+      - check_id
+      - verdict
+      - rationale
+      - evidence_refs
+    Contradiction:
+      type: object
+      additionalProperties: false
+      properties:
+        claim_ref: *id005
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        description:
+          type: string
+          maxLength: 600
+        evidence_refs:
+          type: array
+          items: *id005
+          minItems: 1
+          maxItems: 8
+      required:
+      - claim_ref
+      - check_id
+      - description
+      - evidence_refs
+    EvidenceReview:
+      type: object
+      additionalProperties: false
+      properties:
+        verdict:
+          type: string
+          enum:
+          - pass
+          - fail
+          - uncertain
+        per_check_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerCheckReview'
+          minItems: 3
+          maxItems: 3
+        contradictions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contradiction'
+          minItems: 0
+          maxItems: 3
+        rationale:
+          type: string
+          maxLength: 1000
+        evidence_refs:
+          type: array
+          items: *id005
+          minItems: 1
+          maxItems: 20
+      required:
+      - verdict
+      - per_check_results
+      - contradictions
+      - rationale
+      - evidence_refs
+    EvidenceBundle:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        task_id: *id001
+        delivery_id: *id001
+        mandate_version_id: *id001
+        mandate_digest: *id004
+        artifact_digest: *id004
+        run_id: *id001
+        digest: *id004
+        claim_ref: *id005
+        manifest_ref: *id005
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/CheckResult'
+          minItems: 3
+          maxItems: 3
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceArtifact'
+          minItems: 0
+          maxItems: 6
+        review:
+          oneOf:
+          - $ref: '#/components/schemas/EvidenceReview'
+          - type: 'null'
+        review_interaction_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        is_current:
+          type: boolean
+        created_at: *id002
+      required:
+      - id
+      - task_id
+      - delivery_id
+      - mandate_version_id
+      - mandate_digest
+      - artifact_digest
+      - run_id
+      - digest
+      - claim_ref
+      - manifest_ref
+      - results
+      - artifacts
+      - review
+      - review_interaction_id
+      - is_current
+      - created_at
+    Correction:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        task_id: *id001
+        delivery_id: *id001
+        review_interaction_id: *id001
+        contractor_message:
+          type: string
+          maxLength: 2000
+        evidence_refs:
+          type: array
+          items: *id005
+          minItems: 1
+          maxItems: 20
+        created_at: *id002
+      required:
+      - id
+      - task_id
+      - delivery_id
+      - review_interaction_id
+      - contractor_message
+      - evidence_refs
+      - created_at
+    ReviewResolutionCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        bundle_id: *id001
+        review_interaction_id: *id001
+        rationale:
+          type: string
+          maxLength: 1000
+          minLength: 1
+        evidence_refs:
+          type: array
+          items: *id005
+          minItems: 1
+          maxItems: 20
+        expected_task_version:
+          type: integer
+          minimum: 1
+      required:
+      - bundle_id
+      - review_interaction_id
+      - rationale
+      - evidence_refs
+      - expected_task_version
+    PaymentRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        mandate_version_id: *id001
+        bundle_id: *id001
+        expected_task_version:
+          type: integer
+          minimum: 1
+      required:
+      - mandate_version_id
+      - bundle_id
+      - expected_task_version
+      description: Re-evaluate existing approved conditions. No amount, receiver, currency or authority
+        override is accepted.
+    GuardDecision:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          maxLength: 80
+        passed:
+          type: boolean
+        reason:
+          oneOf:
+          - type: string
+            maxLength: 600
+          - type: 'null'
+      required:
+      - code
+      - passed
+      - reason
+    BudgetView:
+      type: object
+      additionalProperties: false
+      properties:
+        workspace_limit:
+          $ref: '#/components/schemas/Money'
+        workspace_reserved:
+          $ref: '#/components/schemas/Money'
+        workspace_consumed:
+          $ref: '#/components/schemas/Money'
+        workspace_available:
+          $ref: '#/components/schemas/Money'
+        mandate_principal_cap:
+          $ref: '#/components/schemas/Money'
+        reserved_principal:
+          $ref: '#/components/schemas/Money'
+        consumed_principal:
+          $ref: '#/components/schemas/Money'
+        released_principal:
+          $ref: '#/components/schemas/Money'
+        remaining_business_attempts:
+          type: integer
+          minimum: 0
+          maximum: 3
+      required:
+      - workspace_limit
+      - workspace_reserved
+      - workspace_consumed
+      - workspace_available
+      - mandate_principal_cap
+      - reserved_principal
+      - consumed_principal
+      - released_principal
+      - remaining_business_attempts
+      description: Configured principal accounting, not provider wallet balance. Fees are separate.
+    PaymentAttempt:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        obligation_id: *id001
+        task_id: *id001
+        mandate_version_id: *id001
+        attempt_no:
+          type: integer
+          minimum: 1
+          maximum: 3
+        state:
+          type: string
+          enum:
+          - prepared
+          - dispatching
+          - unknown
+          - processing
+          - unclaimed
+          - success
+          - failed
+          - cancelled
+          - blocked
+        item_state:
+          type: string
+          enum:
+          - created
+          - processing
+          - success
+          - unclaimed
+          - cancelled
+          - failed
+          - blocked
+        principal:
+          $ref: '#/components/schemas/PositiveMoney'
+        observed_fee:
+          oneOf:
+          - $ref: '#/components/schemas/Money'
+          - type: 'null'
+        sender_batch_id:
+          type: string
+          maxLength: 256
+        sender_item_id:
+          type: string
+          maxLength: 63
+        batch_id:
+          oneOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+        item_id:
+          oneOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+        transaction_id:
+          oneOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+        raw_status:
+          oneOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+        unresolved:
+          type: boolean
+        nonpayment_confirmed:
+          type: boolean
+        guard_decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/GuardDecision'
+          minItems: 0
+          maxItems: 16
+        hold_reasons:
+          type: array
+          items:
+            type: string
+            maxLength: 160
+          minItems: 0
+          maxItems: 12
+        allowed_actions:
+          type: array
+          items:
+            type: string
+            enum:
+            - reconcile_payment
+            - retry_payment
+            - cancel_unclaimed
+          minItems: 0
+          maxItems: 3
+        last_reconciled_at:
+          oneOf:
+          - *id002
+          - type: 'null'
+        created_at: *id002
+      required:
+      - id
+      - obligation_id
+      - task_id
+      - mandate_version_id
+      - attempt_no
+      - state
+      - item_state
+      - principal
+      - observed_fee
+      - sender_batch_id
+      - sender_item_id
+      - batch_id
+      - item_id
+      - transaction_id
+      - raw_status
+      - unresolved
+      - nonpayment_confirmed
+      - guard_decisions
+      - hold_reasons
+      - allowed_actions
+      - last_reconciled_at
+      - created_at
+    TaskPayments:
+      type: object
+      additionalProperties: false
+      properties:
+        task_id: *id001
+        obligation_id: *id001
+        budget:
+          $ref: '#/components/schemas/BudgetView'
+        attempts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentAttempt'
+          minItems: 0
+          maxItems: 3
+      required:
+      - task_id
+      - obligation_id
+      - budget
+      - attempts
+    RetryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_mandate_version_id: *id001
+        reason:
+          type: string
+          maxLength: 600
+          minLength: 1
+      required:
+      - expected_mandate_version_id
+      - reason
+    CancelRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 600
+          minLength: 1
+      required:
+      - reason
+    ReconcileRequest:
+      type: object
+      additionalProperties: false
+      properties: {}
+      required: []
+    ReceiptEvent:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        type:
+          type: string
+          maxLength: 80
+        at: *id002
+        actor_label:
+          type: string
+          maxLength: 150
+        summary:
+          type: string
+          maxLength: 1000
+        source_id: *id001
+        evidence_refs:
+          type: array
+          items: *id005
+          minItems: 0
+          maxItems: 20
+      required:
+      - id
+      - type
+      - at
+      - actor_label
+      - summary
+      - source_id
+      - evidence_refs
+    Receipt:
+      type: object
+      additionalProperties: false
+      properties:
+        task_id: *id001
+        state:
+          type: string
+          enum:
+          - brief_captured
+          - checks_approved
+          - awaiting_delivery
+          - verifying
+          - correction_requested
+          - evidence_passed
+          - payment_initiated
+          - reconciling
+          - paid
+          - failed
+          - unclaimed
+          - cancelled
+        label:
+          type: string
+          enum:
+          - payment_record
+          - paid_receipt
+          - returned_record
+        brief:
+          $ref: '#/components/schemas/Brief'
+        mandate_version:
+          $ref: '#/components/schemas/MandateVersion'
+        delivery:
+          oneOf:
+          - $ref: '#/components/schemas/Delivery'
+          - type: 'null'
+        evidence_bundle_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        payment:
+          oneOf:
+          - $ref: '#/components/schemas/PaymentAttempt'
+          - type: 'null'
+        budget:
+          $ref: '#/components/schemas/BudgetView'
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReceiptEvent'
+          minItems: 0
+          maxItems: 100
+        last_reconciled_at:
+          oneOf:
+          - *id002
+          - type: 'null'
+      required:
+      - task_id
+      - state
+      - label
+      - brief
+      - mandate_version
+      - delivery
+      - evidence_bundle_id
+      - payment
+      - budget
+      - timeline
+      - last_reconciled_at
+    Job:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        type:
+          type: string
+          maxLength: 80
+        state:
+          type: string
+          enum:
+          - ready
+          - leased
+          - done
+          - failed
+          - held
+        task_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        result_resource_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        hold_reasons:
+          type: array
+          items:
+            type: string
+            maxLength: 160
+          minItems: 0
+          maxItems: 12
+        created_at: *id002
+        updated_at: *id002
+      required:
+      - id
+      - type
+      - state
+      - task_id
+      - result_resource_id
+      - hold_reasons
+      - created_at
+      - updated_at
+    JudgeWorkspace:
+      type: object
+      additionalProperties: false
+      properties:
+        demo_run_id: *id001
+        scope:
+          type: object
+          additionalProperties: false
+          properties:
+            fixture_count:
+              type: integer
+              const: 1
+            recipient_count:
+              type: integer
+              const: 2
+            currency:
+              type: string
+              enum:
+              - USD
+            checks_per_brief:
+              type: integer
+              const: 3
+          required:
+          - fixture_count
+          - recipient_count
+          - currency
+          - checks_per_brief
+        readiness:
+          $ref: '#/components/schemas/Health'
+        mid_flow_task_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        completed_task_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        completed_seed_genuine:
+          type: boolean
+        blocked_reset_attempts:
+          type: array
+          items: *id001
+          minItems: 0
+          maxItems: 3
+        access_until: *id002
+      required:
+      - demo_run_id
+      - scope
+      - readiness
+      - mid_flow_task_id
+      - completed_task_id
+      - completed_seed_genuine
+      - blocked_reset_attempts
+      - access_until
+    SeedRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        completed_bundle_archive_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+      required:
+      - completed_bundle_archive_id
+      description: References a backend-held genuine archive; caller cannot supply fabricated provider/evidence
+        fields.
+    ResetRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_demo_run_id: *id001
+        reason:
+          type: string
+          maxLength: 600
+          minLength: 1
+      required:
+      - expected_demo_run_id
+      - reason
+    ReplayRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        source_type:
+          type: string
+          enum:
+          - delivery
+          - decision_request
+          - verified_webhook
+          - outbox
+        source_id: *id001
+      required:
+      - source_type
+      - source_id
+    ReplayResult:
+      type: object
+      additionalProperties: false
+      properties:
+        state:
+          type: string
+          enum:
+          - deduplicated
+          - reconciliation_queued
+        existing_attempt_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        existing_job_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        message:
+          type: string
+          maxLength: 600
+      required:
+      - state
+      - existing_attempt_id
+      - existing_job_id
+      - message
+    WebhookEnvelope:
+      type: object
+      required:
+      - id
+      - event_type
+      - resource
+      properties:
+        id:
+          type: string
+          maxLength: 160
+        event_type:
+          type: string
+          maxLength: 160
+        resource:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+      description: Original PayPal event; preserve raw bytes and reject duplicate JSON keys. Only the
+        executor verification and item matching confer trust.
+    WebhookReceived:
+      type: object
+      additionalProperties: false
+      properties:
+        received:
+          type: boolean
+          const: true
+      required:
+      - received
+      description: Durable receipt only; verification and payment outcome remain asynchronous.
+    BriefRef:
+      type: object
+      additionalProperties: false
+      properties:
+        brief_id: *id001
+        revision_id: *id001
+        digest: *id004
+      required:
+      - brief_id
+      - revision_id
+      - digest
+    BundleRef:
+      type: object
+      additionalProperties: false
+      properties:
+        bundle_id: *id001
+        digest: *id004
+      required:
+      - bundle_id
+      - digest
+    ProposeChecksInput:
+      type: object
+      additionalProperties: false
+      properties:
+        brief:
+          $ref: '#/components/schemas/BriefRef'
+      required:
+      - brief
+    InspectEvidenceInput:
+      type: object
+      additionalProperties: false
+      properties:
+        evidence_bundle:
+          $ref: '#/components/schemas/BundleRef'
+      required:
+      - evidence_bundle
+    RequestCorrectionInput:
+      type: object
+      additionalProperties: false
+      properties:
+        task_id: *id001
+        findings:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              check_id:
+                type: string
+                enum:
+                - C01
+                - C02
+                - C03
+              reason:
+                type: string
+                maxLength: 600
+              evidence_refs:
+                type: array
+                items: *id005
+                minItems: 1
+                maxItems: 8
+            required:
+            - check_id
+            - reason
+            - evidence_refs
+          minItems: 1
+          maxItems: 3
+      required:
+      - task_id
+      - findings
+    CorrectionToolResult:
+      type: object
+      additionalProperties: false
+      properties:
+        contractor_message:
+          type: string
+          maxLength: 2000
+      required:
+      - contractor_message
+    RequestPayoutInput:
+      type: object
+      additionalProperties: false
+      properties:
+        mandate_id: *id001
+        task_id: *id001
+        evidence_refs:
+          type: array
+          items: *id005
+          minItems: 1
+          maxItems: 20
+      required:
+      - mandate_id
+      - task_id
+      - evidence_refs
+    DecisionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        id: *id001
+        task_id: *id001
+        mandate_version_id: *id001
+        bundle_id: *id001
+        state:
+          type: string
+          enum:
+          - queued
+          - held
+          - deduplicated
+        existing_attempt_id:
+          oneOf:
+          - *id001
+          - type: 'null'
+        hold_reasons:
+          type: array
+          items:
+            type: string
+            maxLength: 160
+          minItems: 0
+          maxItems: 12
+      required:
+      - id
+      - task_id
+      - mandate_version_id
+      - bundle_id
+      - state
+      - existing_attempt_id
+      - hold_reasons
+    PayoutToolResult:
+      type: object
+      additionalProperties: false
+      properties:
+        decision_request:
+          $ref: '#/components/schemas/DecisionRequest'
+      required:
+      - decision_request
+    RunnerClaim:
+      type: object
+      additionalProperties: false
+      properties:
+        worker_id:
+          type: string
+          maxLength: 80
+          minLength: 1
+      required:
+      - worker_id
+    RunnerJob:
+      type: object
+      additionalProperties: false
+      properties:
+        job_id: *id001
+        lease_token:
+          type: string
+          maxLength: 128
+        lease_until: *id002
+        task_id: *id001
+        delivery_id: *id001
+        mandate_version_id: *id001
+        mandate_digest: *id004
+        artifact_version_id: *id001
+        artifact_digest: *id004
+        fixture_url:
+          type: string
+          maxLength: 512
+          format: uri
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AcceptanceCheck'
+          minItems: 3
+          maxItems: 3
+      required:
+      - job_id
+      - lease_token
+      - lease_until
+      - task_id
+      - delivery_id
+      - mandate_version_id
+      - mandate_digest
+      - artifact_version_id
+      - artifact_digest
+      - fixture_url
+      - checks
+      description: URL and executable templates are server-resolved from registry. Service runner must
+        validate the allowlisted host/version; no user target URL.
+    RunnerHeartbeat:
+      type: object
+      additionalProperties: false
+      properties:
+        lease_token:
+          type: string
+          maxLength: 128
+      required:
+      - lease_token
+    RunnerArtifactUpload:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        media_type:
+          type: string
+          enum:
+          - image/png
+        sha256: *id004
+        data_base64:
+          type: string
+          maxLength: 699052
+          contentEncoding: base64
+      required:
+      - check_id
+      - media_type
+      - sha256
+      - data_base64
+    RunnerResultUpload:
+      type: object
+      additionalProperties: false
+      properties:
+        check_id:
+          type: string
+          enum:
+          - C01
+          - C02
+          - C03
+        outcome:
+          type: string
+          enum:
+          - pass
+          - fail
+          - error
+        observations:
+          type: object
+          additionalProperties: true
+        screenshot_indexes:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+            maximum: 2
+          minItems: 0
+          maxItems: 3
+        completed_at: *id002
+      required:
+      - check_id
+      - outcome
+      - observations
+      - screenshot_indexes
+      - completed_at
+    RunnerCompletion:
+      type: object
+      additionalProperties: false
+      properties:
+        lease_token:
+          type: string
+          maxLength: 128
+        artifact_digest: *id004
+        mandate_digest: *id004
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunnerResultUpload'
+          minItems: 3
+          maxItems: 3
+        screenshots:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunnerArtifactUpload'
+          minItems: 0
+          maxItems: 3
+      required:
+      - lease_token
+      - artifact_digest
+      - mandate_digest
+      - results
+      - screenshots
+      description: Total body <=3 MiB; each decoded PNG <=512 KiB and each structured JSON result <=64
+        KiB. Server assigns evidence IDs, verifies hashes and stores exactly one complete bundle per leased
+        job. Logical run_id equals job_id; lease retries retain that run identity.
+    RunnerCompletionResult:
+      type: object
+      additionalProperties: false
+      properties:
+        bundle_id: *id001
+        state:
+          type: string
+          enum:
+          - accepted
+          - stale
+          - deduplicated
+      required:
+      - bundle_id
+      - state
+    BriefList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Brief'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          oneOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    ContractorList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Contractor'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          oneOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    ArtifactVersionList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactVersion'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          oneOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    TaskList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          oneOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    DeliveryList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Delivery'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          oneOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    CompilationList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Compilation'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          oneOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    EvidenceBundleList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceBundle'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          oneOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+    CorrectionList:
+      type: object
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Correction'
+          minItems: 0
+          maxItems: 100
+        next_cursor:
+          oneOf:
+          - type: string
+            maxLength: 256
+          - type: 'null'
+      required:
+      - items
+      - next_cursor
+x-paypal-boundary:
+- method: POST
+  path: /v1/oauth2/token
+- method: POST
+  path: /v1/payments/payouts
+- method: GET
+  path: /v1/payments/payouts/{batch_id}
+- method: GET
+  path: /v1/payments/payouts-item/{item_id}
+- method: POST
+  path: /v1/notifications/verify-webhook-signature
+- method: POST
+  path: /v1/payments/payouts-item/{item_id}/cancel
+x-error-semantics:
+  inaccessible_resource: 404; do not leak another contractor resource
+  schema_or_scope: 422; no domain mutation
+  stale_or_key_conflict: 409; preserve original result/history
+  async_guard_hold: 202 with held state/reasons; no dispatch
+  webhook_storage_failure: 503; never acknowledge lost work
+  verified_event_failure: Quarantine only; forged event IDs cannot occupy canonical verified dedup
+x-red-team:
+- criterion: Technological Implementation
+  challenge: Typed endpoints might hide scripted inference or unsafe payout writes.
+  response: Actual tool lineage, executor-only initiation, immutable bindings and matched item reconciliation;
+    runtime proof pending.
+- criterion: Design
+  challenge: Accepted jobs may be mistaken for completed payments.
+  response: 202 acknowledgement, explicit job/hold/status models and paid receipt only after matched SUCCESS.
+- criterion: Potential Impact
+  challenge: Generic APIs do not identify the agency audience.
+  response: Assigned contractor portal and agency-specific brief/mandate/evidence workflow; owner validation
+    remains required.
+- criterion: Innovation
+  challenge: A family selector could merely return presets.
+  response: Actual intent/ambiguity inference and multimodal contradiction review with distinct template
+    contracts.
+- criterion: Presentation
+  challenge: Seed/reset might generate fake receipts.
+  response: Original genuine archive IDs, missing-proof readiness and history-preserving reset.
+x-requirements:
+- id: US-01
+  priority: Must
+  acceptance_criteria: Given a supported brief and recipient, when I approve three checks and conditional
+    authority, then a passing delivery can request payment under the frozen mandate and expose its outcome.
+  judging_criteria: T, D, I
+  demo: D02–D10
+- id: US-04
+  priority: Must
+  acceptance_criteria: Given a brief missing a required supported parameter, when compilation identifies
+    ambiguity, then I can supply clarification and no approval/payout is enabled until three valid checks
+    are available.
+  judging_criteria: T, D
+  demo: D02–D03 companion
+- id: US-05
+  priority: Must
+  acceptance_criteria: Given draft terms and their version digest, when I approve or later revise them,
+    then approval freezes that version and a revision creates a new one while retaining obligation payment
+    history.
+  judging_criteria: T, D
+  demo: D04 companion
+- id: US-06
+  priority: Must
+  acceptance_criteria: Given all executable checks pass but AI is uncertain, when I record a cited resolution,
+    then the original verdict remains visible; a failed executable check still prevents release.
+  judging_criteria: T, D
+  demo: D06–D08 companion
+- id: US-07
+  priority: Must
+  acceptance_criteria: Given failed, processing, or unclaimed payment, when I inspect it, then I see the
+    reason, reserved principal, permitted action, and confirmed outcome without creating a duplicate attempt.
+  judging_criteria: T, D
+  demo: D08–D10 companion
+- id: US-02
+  priority: Must
+  acceptance_criteria: Given failed artifact-bound evidence, when I open the correction and submit a corrected
+    version, then verification resumes under the same approved criteria and preserves the previous findings.
+  judging_criteria: D, I
+  demo: D06–D07
+- id: US-08
+  priority: Must
+  acceptance_criteria: Given my assigned approved task, when I open the portal and select an allowed artifact,
+    then I see its three checks, amount, authority deadline, claim field, and acknowledgement for that
+    delivery.
+  judging_criteria: D, I
+  demo: D05, D07
+- id: US-09
+  priority: Must
+  acceptance_criteria: Given a payment attempt for my task, when I inspect status or receipt, then I see
+    its actual state, amount, observed fees, last reconciliation time, and linked evidence while other
+    contractors' data is denied.
+  judging_criteria: T, D
+  demo: D10, D12
+- id: US-03
+  priority: Must
+  acceptance_criteria: Given seeded owner/contractor access, when I follow broken delivery, correction,
+    payment, and replay, then actual evidence, item state, receipt, and dedup behavior are inspectable
+    without supplying keys.
+  judging_criteria: T, D, P
+  demo: D01–D12
+- id: US-10
+  priority: Must
+  acceptance_criteria: Given the three canonical briefs, when I compile each, then each yields three distinct
+    valid templates/parameters and the family check sets differ materially.
+  judging_criteria: T, N
+  demo: D03 companion
+- id: US-11
+  priority: Must
+  acceptance_criteria: Given a completed or unresolved obligation, when I replay its delivery/event, then
+    I receive the existing attempt reference and no new financial initiation is created.
+  judging_criteria: T, P
+  demo: D11
+- id: US-12
+  priority: Must
+  acceptance_criteria: Given the workspace's current financial state, when I request reset, then unresolved
+    movement defers reset; a safe reset creates a fresh namespace and retains genuine completed/audit
+    records.
+  judging_criteria: T, D, P
+  demo: D01, D11 companion
+- id: FR-01
+  priority: Must
+  acceptance_criteria: Given unsupported family/fixture, third recipient, non-USD terms, or custom executable
+    check, when submitted through any role/API, then reject with a specific reason and create no payment.
+  judging_criteria: T, D
+  demo: D02, D08 companion
+- id: FR-02
+  priority: Must
+  acceptance_criteria: Given the canonical responsive, API, and keyboard briefs and trusted manifest,
+    when ambiguities are resolved and compilation runs, then each produces three distinct allowlisted
+    checks with valid parameters; family sets differ materially and unsupported baselines are rejected.
+  judging_criteria: T, N
+  demo: D03
+- id: FR-17
+  priority: Must
+  acceptance_criteria: Given authorized owner input, when saved, then retain text/revision, supported
+    family, fixture reference, contractor reference, proposed financial terms, and actor; later edits
+    create a new draft revision without rewriting approved history.
+  judging_criteria: T, D
+  demo: D02
+- id: FR-18
+  priority: Must
+  acceptance_criteria: Given missing required intent/parameters or invalid compiler output, when compilation
+    completes, then display ambiguities/questions or a failure reason, accept clarification, and keep
+    approval disabled until exactly three valid checks exist.
+  judging_criteria: T, D, N
+  demo: D03 companion
+- id: FR-03
+  priority: Must
+  acceptance_criteria: Given a valid reviewed draft, when approved, then freeze its complete financial/check
+    payload with approver, timestamp, digest and receiver binding; an attempted edit is rejected and must
+    create a new version.
+  judging_criteria: T, D
+  demo: D04
+- id: FR-04
+  priority: Must
+  acceptance_criteria: Given a decision request, when any release guard fails, then make no dispatch and
+    persist a specific hold/guard result; only fully eligible current authority may initiate.
+  judging_criteria: T
+  demo: D06, D08
+- id: FR-19
+  priority: Must
+  acceptance_criteria: Given the owner's draft/version digest, when approval is submitted, then require
+    exactly three distinct valid checks, positive USD amount within cap, allowed pinned receiver, future
+    expiry and max attempts 1–3; a stale digest or invalid field blocks approval.
+  judging_criteria: T, D
+  demo: D04 companion
+- id: FR-20
+  priority: Must
+  acceptance_criteria: Given a revised draft for an existing milestone, when the new version is approved,
+    then supersede prior initiation authority, preserve all snapshots/attempts/budget history, and require
+    evidence bound to the new version before any permitted initiation; a prior successful payment cannot
+    be paid again.
+  judging_criteria: T
+  demo: D04, D08 companion
+- id: FR-05
+  priority: Must
+  acceptance_criteria: Given an allowlisted artifact selection, when submitted, then persist its digest,
+    delivery ID, submitting actor and approved mandate digest, and bind all resulting verification evidence
+    to them.
+  judging_criteria: T
+  demo: D05, D07
+- id: FR-08
+  priority: Must
+  acceptance_criteria: Given failed delivery findings, when `request_correction` is validated and a corrected
+    artifact arrives, then persist an internal portal message with evidence references, create a new run,
+    retain the predecessor, and preserve the approved criteria.
+  judging_criteria: D, I
+  demo: D06–D07
+- id: FR-21
+  priority: Must
+  acceptance_criteria: Given an assigned contractor submission before initiation, when accepted, then
+    record claim text, artifact reference, delivery sequence and acknowledgement; repeated submission
+    identity returns the existing delivery and invalid post-initiation replacement is rejected.
+  judging_criteria: T, D
+  demo: D05, D07
+- id: FR-22
+  priority: Must
+  acceptance_criteria: Given a newer delivery or mandate version, when an older runner/model job finishes,
+    then retain its history but mark it ineligible for release; only the latest selected delivery with
+    matching current authority can proceed.
+  judging_criteria: T
+  demo: D07–D08 companion
+- id: FR-06
+  priority: Must
+  acceptance_criteria: Given three approved templates/parameters and a bound artifact, when the runner
+    finishes, then persist a result for each check plus applicable screenshots, run ID, digests and timestamps;
+    a timeout/error is not a pass.
+  judging_criteria: T, P
+  demo: D05–D08
+- id: FR-07
+  priority: Must
+  acceptance_criteria: Given the broken responsive artifact claiming “fixed,” when reviewed, then fail
+    release and cite the submitted claim, failed overflow result and same-run 320px screenshot; every
+    per-check verdict has valid attributable references.
+  judging_criteria: T, N, P
+  demo: D06
+- id: FR-09
+  priority: Must
+  acceptance_criteria: Given uncertain evidence review, when stored, then remain in `verifying` with `review_required=true`
+    and no dispatch; only an authorized grounded resolution can clear ambiguity, and no failed executable
+    check may be waived.
+  judging_criteria: T, D
+  demo: D06–D08 companion
+- id: FR-23
+  priority: Must
+  acceptance_criteria: Given an authorized evidence request, when opened, then show delivery/artifact/mandate/run
+    identifiers, all three results and available screenshots; wrong-task, wrong-version or nonexistent
+    references are rejected before model review.
+  judging_criteria: T, D, P
+  demo: D06, D08
+- id: FR-24
+  priority: Must
+  acceptance_criteria: Given malformed output, injection text, unsupported tools, invented references
+    or a model timeout, when processed, then reject it, record the failure and apply a bounded repair/review
+    policy; no failure can generate payment authority or invented successful evidence.
+  judging_criteria: T
+  demo: D03, D06 companion
+- id: FR-25
+  priority: Must
+  acceptance_criteria: Given all executable checks pass and AI remains uncertain, when an owner resolves
+    it with rationale and valid references, then append the resolution and re-evaluate release guards
+    while retaining the original verdict; resolution is denied for failed checks, stale evidence or another
+    contractor's task.
+  judging_criteria: T, D
+  demo: D08 companion
+- id: FR-38
+  priority: Could
+  acceptance_criteria: Given two retained deliveries for the same task, when comparison is opened, then
+    show clearly labeled artifacts/run times and corresponding results without merging references or changing
+    current release eligibility.
+  judging_criteria: D, P
+  demo: D06–D08 optional
+- id: FR-10
+  priority: Must
+  acceptance_criteria: Given current passing evidence or permitted grounded resolution and valid authority,
+    when the decision request is dispatched, then the executor binds receiver/USD amount from the frozen
+    snapshot, calls only the sandbox payout endpoint and persists provider references.
+  judging_criteria: T
+  demo: D08–D09
+- id: FR-11
+  priority: Must
+  acceptance_criteria: Given creation, verified webhook or polling, when status is reconciled, then match
+    batch/item/sender identity, receiver binding and amount, retain raw status, and mark paid only on
+    matched item `SUCCESS`; batch success or a mismatch cannot mark paid.
+  judging_criteria: T, P
+  demo: D09–D10
+- id: FR-12
+  priority: Must
+  acceptance_criteria: Given a confirmed `UNCLAIMED` item, when the owner or configured recovery policy
+    requests cancellation, then refresh eligibility, call cancel through the executor, and retain reservation
+    until item reconciliation proves return.
+  judging_criteria: T
+  demo: D10 companion
+- id: FR-14
+  priority: Must
+  acceptance_criteria: Given the same delivery/decision/event or lost creation response, when processed
+    again, then resolve the existing obligation/attempt, reuse its persisted sender IDs for permitted
+    retransmission, and create no second financial initiation.
+  judging_criteria: T, P
+  demo: D11
+- id: FR-26
+  priority: Must
+  acceptance_criteria: Given any payout recommendation, when evaluated, then record each guard's pass/fail
+    and a user-facing reason; a failed guard exposes a permitted next action while blocking dispatch.
+  judging_criteria: T, D
+  demo: D08
+- id: FR-27
+  priority: Must
+  acceptance_criteria: Given eligible release, when accepted by the backend, then commit reservation,
+    attempt identity, sender IDs and outbox work together before external dispatch; a crash/retry recovers
+    that same attempt rather than minting another.
+  judging_criteria: T
+  demo: D09, D11 companion
+- id: FR-28
+  priority: Must
+  acceptance_criteria: Given a PayPal event, when ingested, then verify genuine signature/context through
+    the executor before financial mutation, store event ID/hash, and enqueue matched item reconciliation
+    once; unverifiable/mismatched events change no payment state and cannot poison dedup for a later genuine
+    event.
+  judging_criteria: T
+  demo: D09–D10 companion
+- id: FR-29
+  priority: Must
+  acceptance_criteria: Given provider-confirmed nonpayment, when retry is requested, then require a retryable
+    reason, still-valid evidence/authority, remaining cap and fewer than approved attempts; create a new
+    numbered attempt and sender IDs while retaining old item history.
+  judging_criteria: T
+  demo: D08–D10 companion
+- id: FR-30
+  priority: Must
+  acceptance_criteria: Given an existing initiated/unknown/unclaimed attempt, when its mandate expires
+    or is superseded, then stop new initiation under that version and continue status/recovery handling
+    without deleting the attempt or releasing reserve speculatively.
+  judging_criteria: T
+  demo: D09–D10 companion
+- id: FR-31
+  priority: Must
+  acceptance_criteria: Given cancellation races with a claim or returns an ambiguous acknowledgement,
+    when refreshed, then show the actual matched success/return/pending state, post budget changes once,
+    and never label cancelled or release principal solely from HTTP acceptance.
+  judging_criteria: T
+  demo: D10 companion
+- id: FR-32
+  priority: Must
+  acceptance_criteria: Given mandate/attempt status, when payment detail is viewed, then display cap,
+    reserved/consumed/released principal, remaining business attempts, observed fees and reconciliation
+    time; configured allowance is not presented as a PayPal balance or escrow.
+  judging_criteria: T, D
+  demo: D08–D10
+- id: FR-13
+  priority: Must
+  acceptance_criteria: Given a reconciled item, when an authorized owner/contractor opens its record,
+    then link brief, approved version, artifact, evidence, AI/human decision, executor guards, principal,
+    observed fees and provider IDs; only matched success is labeled paid.
+  judging_criteria: T, D, P
+  demo: D10, D12
+- id: FR-33
+  priority: Must
+  acceptance_criteria: Given missing fee information, pending status or a newer observation, when the
+    receipt is viewed, then show unknown/not-yet-reported values explicitly, retain event timestamps and
+    source references, and never replace missing data with invented zero fees or success.
+  judging_criteria: T, D, P
+  demo: D10
+- id: FR-15
+  priority: Must
+  acceptance_criteria: Given the active role and task, when navigating, then expose an AG Grid owner queue
+    with sorting/status filtering and task detail, Brief Composer, Mandate Approval, Evidence Review,
+    payment record/receipt, and permitted contractor submit/correction/status views; state and next action
+    agree across surfaces.
+  judging_criteria: D, P
+  demo: D01, D04, D06, D12
+- id: FR-34
+  priority: Must
+  acceptance_criteria: Given an assigned contractor, when they view or submit a task, then show only their
+    checks, delivery/correction and payment records; deny another recipient's data, approval, financial
+    overrides, cancellation and reset even through direct API calls.
+  judging_criteria: T, D
+  demo: D05, D07, D12
+- id: FR-16
+  priority: Must
+  acceptance_criteria: Given a reset request, when unresolved initiated/unknown/unclaimed movement exists
+    in the demo workspace, then defer with its reference; when safe, create a fresh demo namespace while
+    retaining financial, dedup and audit history.
+  judging_criteria: T, D, P
+  demo: D01, D11 companion
+- id: FR-35
+  priority: Must
+  acceptance_criteria: Given configured sandbox/model access and an actual completed execution bundle,
+    when seeding, then create the approved mid-flow case and expose the real completed evidence/transaction
+    chain; if no real completed bundle exists, report it missing and keep that case pending.
+  judging_criteria: T, D, P
+  demo: D01, D10 companion
+- id: FR-36
+  priority: Must
+  acceptance_criteria: Given a judge visit, when readiness is checked, then show current application/database/worker/fixture
+    dependencies and whether the actual completed seed exists; unavailable model/provider work stays failed/pending
+    with instructions and cannot be shown as success.
+  judging_criteria: D, P
+  demo: D01 companion
+- id: FR-37
+  priority: Must
+  acceptance_criteria: Given a safe reset, when committed, then assign fresh task/mandate/run identifiers
+    and append a reset event, retain prior attempts/evidence/webhook dedup, and leave wallet funding and
+    durable workspace allowance unchanged.
+  judging_criteria: T, D, P
+  demo: D01, D11 companion
+- id: NFR-01
+  priority: Must
+  acceptance_criteria: Given browser/model/runner/fixture configuration or a live-mode request, when inspected,
+    then those components contain no PayPal secrets and live base URLs are rejected; only the backend
+    executor can perform the six PayPal operations.
+  judging_criteria: T
+  demo: D08–D10 companion
+- id: NFR-02
+  priority: Must
+  acceptance_criteria: Given concurrent workers, restart, transport uncertainty or replay after reset,
+    when processed, then one obligation has at most one unresolved attempt and one successful payment;
+    database uniqueness and locked transitions preserve this across mandate versions.
+  judging_criteria: T
+  demo: D09, D11 companion
+- id: NFR-03
+  priority: Must
+  acceptance_criteria: Given dispatch/status/cancellation transitions, when posted, then reserve/consume/release
+    principal once under both mandate cap and durable workspace allowance; pending/unclaimed/unknown funds
+    remain reserved, fees separate, and totals never become negative.
+  judging_criteria: T
+  demo: D08–D10 companion
+- id: NFR-04
+  priority: Must
+  acceptance_criteria: Given unapproved code/artifact/template/URL or a credential request, when a runner
+    job is validated, then reject it; allowed runs use trusted fixture templates in a separate container
+    without PayPal/model keys or financial write access.
+  judging_criteria: T
+  demo: D05–D08 companion
+- id: NFR-05
+  priority: Must
+  acceptance_criteria: Given approval, submission, review, supersession, payout, reconciliation or reset,
+    when recorded, then append actor/service identity, timestamp, correlation ID, relevant digests and
+    source references without rewriting prior approval/evidence/attempt records.
+  judging_criteria: T, D
+  demo: D04, D06, D10–D11
+- id: NFR-06
+  priority: Must
+  acceptance_criteria: Given another contractor's identifier or owner-only operation, when any API/evidence
+    endpoint is called, then deny unauthorized access independent of UI role selection; responses disclose
+    no protected cross-role evidence/financial bindings.
+  judging_criteria: T, D
+  demo: D04, D12 companion
+- id: NFR-07
+  priority: Should
+  acceptance_criteria: Given 30 measured warm local runs, when benchmarked, then target p95 accepted-command
+    acknowledgement <=1s and runner execution <=30s; report queue, model and provider waiting separately
+    with hardware/environment and actual results.
+  judging_criteria: D, P
+  demo: D03, D05–D10
+- id: NFR-08
+  priority: Must
+  acceptance_criteria: Given supplied access instructions before 15 December 2026, 16:00 UTC, when followed,
+    then the working workspace, role access, fixtures, evidence and genuine provider records remain available;
+    operational coverage targets 16 December, 00:00 UTC.
+  judging_criteria: D, P
+  demo: D01–D12
+- id: NFR-09
+  priority: Must
+  acceptance_criteria: Given three agency-owner interviews and at least one paired manual/assisted review
+    observation per owner, when findings are reported, then include actual timings, task/order/sample
+    limitations and negative results; no invented time-saving or customer claim appears.
+  judging_criteria: I
+  demo: D01
+- id: NFR-10
+  priority: Must
+  acceptance_criteria: Given a crash before/after job claim, state commit or provider dispatch, when workers
+    recover, then durable work resumes or remains visibly held, no accepted job vanishes, and redelivery
+    preserves the same attempt and audit correlation.
+  judging_criteria: T
+  demo: D05, D09, D11 companion
+- id: NFR-11
+  priority: Must
+  acceptance_criteria: Given token expiry, transient failure, lost response or delayed recovery, when
+    handled, then use bounded backoff and the original attempt identity, retain unknown reservations,
+    and prohibit unsafe late retransmission outside duplicate protection; secrets remain redacted.
+  judging_criteria: T
+  demo: D09–D10 companion
+- id: NFR-12
+  priority: Must
+  acceptance_criteria: Given amounts, fees, expiry or timestamps, when validated/stored/compared, then
+    use integer cents or exact decimals with two-place USD validation and UTC instants; invalid precision/currency
+    and ambiguous expiry input are rejected rather than rounded silently.
+  judging_criteria: T
+  demo: D04, D08–D10 companion
+- id: NFR-13
+  priority: Must
+  acceptance_criteria: Given runner PNG/JSON artifacts, when ingested or fetched, then verify digest/task/run/mandate
+    binding, enforce allowed media and size limits, and persist bytes durably; tampered or mismatched
+    data cannot authorize release.
+  judging_criteria: T
+  demo: D05–D08 companion
+- id: NFR-14
+  priority: Must
+  acceptance_criteria: Given owner/contractor/judge navigation, when performed by keyboard, then controls
+    and dialogs have names, focus behavior and visible state; failures/status are announced and never
+    depend on color alone.
+  judging_criteria: D, P
+  demo: D01–D12 companion
+- id: NFR-15
+  priority: Must
+  acceptance_criteria: Given application/job/payment failure, when observed, then structured logs and
+    health/readiness expose stage, request/job/attempt correlation and actionable error without tokens,
+    credentials or full receiver addresses.
+  judging_criteria: T, P
+  demo: D05–D10 companion
+- id: NFR-16
+  priority: Must
+  acceptance_criteria: Given a clean checkout and documented environment inputs, when the final <=3 setup
+    commands are followed, then Compose starts the required services and seeds truthful cases; hosted
+    judges do not supply personal API keys.
+  judging_criteria: T, D, P
+  demo: D01 companion
+- id: NFR-17
+  priority: Must
+  acceptance_criteria: Given a compiler/reviewer call or canonical evaluation, when executed, then record
+    model/prompt/schema versions, input/evidence hashes, valid output/error and call usage where reported;
+    apply finite timeout/repair limits and all three family cases.
+  judging_criteria: T, N, P
+  demo: D03, D06 companion
+- id: NFR-18
+  priority: Must
+  acceptance_criteria: Given reset, restart or cleanup during judging, when performed, then preserve approved
+    snapshots, actual evidence/decisions, attempts/provider references, webhook dedup and budget history
+    through the access window; expired tasks cannot cause unsafe re-initiation.
+  judging_criteria: T
+  demo: D10–D11 companion
+- id: NFR-19
+  priority: Must
+  acceptance_criteria: Given malicious claim/brief, forged session/action or injected tool parameters,
+    when processed, then enforce input/schema limits and server authorization, prevent forged money authority,
+    and render untrusted text without executable markup.
+  judging_criteria: T
+  demo: D02, D05–D09 companion
+x-assumptions:
+- id: A-A01
+  assumption: Configured application demo access grants only the three preassigned personas.
+  validation: Direct role/resource denial cases.
+- id: A-A02
+  assumption: Principal-only budget and at most three business attempts.
+  validation: Ledger and authority guards.
+- id: A-A03
+  assumption: Actual completed archive exists before judge-ready seed.
+  validation: Missing archive remains pending.
+- id: A-A04
+  assumption: Internal API inference owns model key; executor worker alone owns PayPal credentials.
+  validation: Secret custody and scoped service paths.
+x-open-questions:
+- id: Q-A01
+  question: Which model/provider supplies structured inference and vision?
+  default: Provider-neutral adapter; choose before integration.
+- id: Q-A02
+  question: Does principal-only cap remain the approved policy?
+  default: Yes; fees separate unless context changes.
+- id: Q-A03
+  question: Which hosted origin/service resources will be provisioned?
+  default: Render origin supplied during deployment; never invent hosted URL.

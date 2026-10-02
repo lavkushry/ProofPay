@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: proofpay-db
+    environment:
+      POSTGRES_USER: proofpay
+      POSTGRES_PASSWORD: proofpay_password
+      POSTGRES_DB: proofpay
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/migrations/schema.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proofpay"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: proofpay-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://proofpay:proofpay_password@db:5432/proofpay
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - PAYPAL_MODE=sandbox
+      - PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
+      - FIXTURE_URL=http://fixture:8080
+      - RUNNER_URL=http://runner:8081
+    depends_on:
+      db:
+        condition: service_healthy
+
+  fixture:
+    build:
+      context: ./fixture
+      dockerfile: Dockerfile
+    container_name: proofpay-fixture
+    ports:
+      - "8080:8080"
+
+  runner:
+    build:
+      context: ./runner
+      dockerfile: Dockerfile
+    container_name: proofpay-runner
+    environment:
+      - FIXTURE_URL=http://fixture:8080
+      - API_URL=http://api:8000
+    depends_on:
+      - fixture
+      - api
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: proofpay-web
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
