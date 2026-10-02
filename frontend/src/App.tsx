@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Task {
   id: string;
@@ -27,11 +27,22 @@ interface CheckProposal {
   clarifying_questions: string[];
 }
 
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const data = await response.json();
+    const detail = data.detail;
+    return typeof detail === 'string' ? detail : detail?.message || `Request failed (${response.status}).`;
+  } catch {
+    return `Request failed (${response.status}).`;
+  }
+}
+
 export default function App() {
   const [role, setRole] = useState<'owner' | 'contractor' | 'judge'>('owner');
   const [activeTab, setActiveTab] = useState<'queue' | 'brief' | 'contractor' | 'judge'>('queue');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
 
   // Brief Composer state
   const [title, setTitle] = useState('Fix mobile checkout viewport');
@@ -52,7 +63,6 @@ export default function App() {
   // Modals
   const [evidenceModalTask, setEvidenceModalTask] = useState<Task | null>(null);
   const [receiptModalTask, setReceiptModalTask] = useState<Task | null>(null);
-  const [evidenceData, setEvidenceData] = useState<any>(null);
   const [receiptData, setReceiptData] = useState<any>(null);
 
   // Judge state
@@ -79,6 +89,7 @@ export default function App() {
 
   const handleCompileBrief = async () => {
     setLoading(true);
+    setRequestError(null);
     try {
       const res = await fetch('/api/v1/briefs', {
         method: 'POST',
@@ -92,6 +103,7 @@ export default function App() {
           expires_in_hours: 24,
         }),
       });
+      if (!res.ok) throw new Error(await errorMessage(res));
       if (res.ok) {
         const data = await res.json();
         setCompiledProposal(data.proposal);
@@ -110,6 +122,7 @@ export default function App() {
         }
       }
     } catch (e) {
+      setRequestError(e instanceof Error ? e.message : 'Unable to compile brief.');
       console.error(e);
     } finally {
       setLoading(false);
@@ -119,6 +132,7 @@ export default function App() {
   const handleApproveMandate = async () => {
     if (!mandateVersionId) return;
     setLoading(true);
+    setRequestError(null);
     try {
       const res = await fetch('/api/v1/mandates/approve', {
         method: 'POST',
@@ -128,12 +142,14 @@ export default function App() {
           expected_digest: 'any',
         }),
       });
+      if (!res.ok) throw new Error(await errorMessage(res));
       if (res.ok) {
         setIsMandateApproved(true);
         await fetchTasks();
         alert('Mandate successfully approved and frozen! Task transitioned to awaiting_delivery.');
       }
     } catch (e) {
+      setRequestError(e instanceof Error ? e.message : 'Unable to approve mandate.');
       console.error(e);
     } finally {
       setLoading(false);
@@ -158,15 +174,11 @@ export default function App() {
           claim: contractorClaim,
         }),
       });
-      if (res.ok) {
-        await fetchTasks();
-        if (selectedArtifact.includes('broken')) {
-          setSubmissionFeedback('❌ Verification Failed (D06): The runner detected horizontal overflow at 320px viewport! AI cited contradiction between claim and runner evidence. Correction requested.');
-        } else {
-          setSubmissionFeedback('✅ Verification Passed (D08-D10): All 3 checks verified! Automated PayPal sandbox payout initiated and confirmed paid!');
-        }
-      }
+      if (!res.ok) throw new Error(await errorMessage(res));
+      await fetchTasks();
+      setSubmissionFeedback('Delivery accepted. Follow its status in the work queue.');
     } catch (e) {
+      setSubmissionFeedback(e instanceof Error ? e.message : 'Unable to submit delivery.');
       console.error(e);
     } finally {
       setLoading(false);
@@ -175,22 +187,6 @@ export default function App() {
 
   const openEvidenceModal = async (task: Task) => {
     setEvidenceModalTask(task);
-    setEvidenceData(null);
-    try {
-      // Find bundle
-      const tRes = await fetch(`/api/v1/tasks/${task.id}`);
-      const t = await tRes.json();
-      if (t.current_delivery_id) {
-        // Mock or retrieve bundle details
-        setEvidenceData({
-          taskId: task.id,
-          state: task.state,
-          holdReasons: task.hold_reasons,
-        });
-      }
-    } catch (e) {
-      console.error(e);
-    }
   };
 
   const openReceiptModal = async (task: Task) => {
@@ -212,9 +208,11 @@ export default function App() {
     if (!taskId) return;
     try {
       const res = await fetch(`/api/v1/judge/replay-task/${taskId}`, { method: 'POST' });
+      if (!res.ok) throw new Error(await errorMessage(res));
       const data = await res.json();
-      setJudgeFeedback(`[Invariant I3 Verified] ${data.message} Batch ID: ${data.sender_batch_id || 'N/A'}`);
+      setJudgeFeedback(`${data.message} Batch ID: ${data.sender_batch_id || 'N/A'}`);
     } catch (e) {
+      setJudgeFeedback(e instanceof Error ? e.message : 'Unable to replay task.');
       console.error(e);
     }
   };
@@ -222,16 +220,22 @@ export default function App() {
   const handleReset = async () => {
     try {
       const res = await fetch('/api/v1/judge/reset', { method: 'POST' });
+      if (!res.ok) throw new Error(await errorMessage(res));
       const data = await res.json();
       setJudgeFeedback(`[Guarded Reset (FR-16)] ${data.message}`);
       await fetchTasks();
     } catch (e) {
+      setJudgeFeedback(e instanceof Error ? e.message : 'Unable to reset workspace.');
       console.error(e);
     }
   };
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div role="status" style={{ padding: '12px 24px', background: '#422006', color: '#fef3c7' }}>
+        Development preview: verification and payments are awaiting implementation.
+      </div>
+      {requestError && <p role="alert" style={{ padding: '12px 24px', color: '#fca5a5' }}>{requestError}</p>}
       {/* Top Navbar */}
       <header style={{
         background: '#111827',
@@ -786,9 +790,9 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10b981', padding: '14px', borderRadius: '6px', marginBottom: '20px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#34d399' }}>VERIFIED EVIDENCE (FR-06):</span>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#34d399' }}>EVIDENCE PENDING:</span>
                   <p style={{ fontSize: '13px', color: '#a7f3d0', marginTop: '4px' }}>
-                    All 3 checks passed. Visual viewport width verified at 320px with 0px horizontal overflow. Total matches baseline $42.00.
+                    No verified evidence is available for this task yet.
                   </p>
                 </div>
               )}

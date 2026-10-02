@@ -429,6 +429,7 @@ CREATE TABLE IF NOT EXISTS payment_obligations (
   consumed_cents bigint NOT NULL DEFAULT 0 CHECK (consumed_cents >= 0),
   UNIQUE (agency_id, id),
   UNIQUE (agency_id, task_id),
+  UNIQUE (agency_id, task_id, id),
   FOREIGN KEY (agency_id, task_id) REFERENCES delivery_tasks(agency_id, id)
 );
 

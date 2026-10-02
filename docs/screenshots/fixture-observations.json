@@ -1,0 +1,10 @@
+{
+  "broken": {
+    "viewport_width": 320,
+    "scroll_width": 544
+  },
+  "fixed": {
+    "viewport_width": 320,
+    "scroll_width": 320
+  }
+}
