@@ -5,14 +5,16 @@ from sqlalchemy import select
 from backend.app.database import get_db
 from backend.app.models import (
     DeliveryTask, Brief, BriefRevision, Mandate, MandateVersion,
-    EvidenceBundle, PaymentObligation, PaymentAttempt, PayoutItem
+    EvidenceBundle, PaymentObligation, PaymentAttempt, PayoutItem, Contractor
 )
 from backend.app.schemas.api_schemas import ReceiptResponse
+from backend.app.services.auth import Actor, authorize_task, get_actor
 
 router = APIRouter(prefix="/api/v1/receipts", tags=["Receipts"])
 
 @router.get("/{task_id}", response_model=ReceiptResponse)
-async def get_receipt(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_receipt(task_id: uuid.UUID, actor: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
+    await authorize_task(db, actor, task_id)
     # 1. Fetch Task
     t_stmt = select(DeliveryTask).where(DeliveryTask.id == task_id)
     t_res = await db.execute(t_stmt)
@@ -31,7 +33,8 @@ async def get_receipt(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     mandate_version = m_res.scalar_one_or_none()
 
     mandate_digest = mandate_version.payload_digest if mandate_version else "N/A"
-    amount_usd = (mandate_version.amount_cents / 100.0) if mandate_version else 75.0
+    amount_usd = (mandate_version.amount_cents / 100.0) if mandate_version else 0.0
+    recipient_ref = await db.scalar(select(Contractor.recipient_ref).where(Contractor.agency_id==actor.agency_id, Contractor.id==mandate_version.contractor_id)) if mandate_version else None
 
     # 4. Fetch Evidence Bundle info
     bundle_digest = "N/A"
@@ -54,7 +57,7 @@ async def get_receipt(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         return ReceiptResponse(
             task_id=task.id,
             brief_title=title,
-            contractor_ref="contractor_maya",
+            contractor_ref=recipient_ref or "unassigned",
             amount_usd=amount_usd,
             currency="USD",
             item_status=payout_item.canonical_state,
@@ -62,13 +65,13 @@ async def get_receipt(task_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
             provider_item_id=payout_item.provider_item_id,
             mandate_digest=mandate_digest,
             bundle_digest=bundle_digest,
-            paid_at=payout_item.updated_at
+            paid_at=payout_item.updated_at if payout_item.canonical_state=="success" and payout_item.binding_verified else None
         )
 
     return ReceiptResponse(
         task_id=task.id,
         brief_title=title,
-        contractor_ref="contractor_maya",
+        contractor_ref=recipient_ref or "unassigned",
         amount_usd=amount_usd,
         currency="USD",
         item_status="pending_release",

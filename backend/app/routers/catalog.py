@@ -1,5 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import List, Dict, Any
+from backend.app.services.auth import require_owner
 
 router = APIRouter(prefix="/api/v1/catalog", tags=["Catalog"])
 
@@ -29,7 +30,7 @@ async def list_supported_families() -> List[Dict[str, Any]]:
         }
     ]
 
-@router.get("/recipients")
+@router.get("/recipients", dependencies=[Depends(require_owner)])
 async def list_contractors() -> List[Dict[str, Any]]:
     return [
         {

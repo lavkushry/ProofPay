@@ -64,6 +64,17 @@ jobs:
           python-version: '3.11'
       - run: docker compose up --build -d --wait --wait-timeout 180
       - run: python scripts/smoke_test.py
+      - run: docker build -t proofpay-browser-check runner
+      - run: >-
+          docker run --rm --network host
+          -v "$PWD/scripts/browser_smoke.py:/app/browser_smoke.py:ro"
+          -v "$PWD/artifacts/browser:/screenshots"
+          proofpay-browser-check python /app/browser_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-validation
+          path: artifacts/browser
       - run: docker compose logs --tail=80
         if: failure()
       - run: docker compose down

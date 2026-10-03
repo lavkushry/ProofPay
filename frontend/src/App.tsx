@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { messageFor, Persona, Session, SessionGate } from './session';
 
 interface Task {
   id: string;
@@ -30,7 +31,7 @@ interface CheckProposal {
 async function errorMessage(response: Response): Promise<string> {
   try {
     const data = await response.json();
-    const detail = data.detail;
+    const detail = data.message || data.detail;
     return typeof detail === 'string' ? detail : detail?.message || `Request failed (${response.status}).`;
   } catch {
     return `Request failed (${response.status}).`;
@@ -38,7 +39,13 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 export default function App() {
-  const [role, setRole] = useState<'owner' | 'contractor' | 'judge'>('owner');
+  const [session, setSession] = useState<Session | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const role = session?.role;
+  const retryKeys = useRef(new Map<string, string>());
+  const currentIdentity = useRef<string | null>(null);
+  currentIdentity.current = session?.csrf_token || null;
   const [activeTab, setActiveTab] = useState<'queue' | 'brief' | 'contractor' | 'judge'>('queue');
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
@@ -69,21 +76,105 @@ export default function App() {
   const [judgeFeedback, setJudgeFeedback] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchTasks();
+    fetch('/api/session', { credentials: 'same-origin' }).then(async response => {
+      if (response.ok) setSession(await response.json());
+      else if (response.status !== 401) setSessionError(await messageFor(response));
+    }).catch(() => setSessionError('Workspace is unavailable. Please try again.'))
+      .finally(() => setSessionLoaded(true));
   }, []);
 
+  useEffect(() => {
+    setTasks([]);
+    setCurrentCreatedTaskId(null);
+    setEvidenceModalTask(null);
+    setReceiptModalTask(null);
+    setReceiptData(null);
+    setCompiledProposal(null);
+    setMandateVersionId(null);
+    setIsMandateApproved(false);
+    setRequestError(null);
+    setSubmissionFeedback(null);
+    setJudgeFeedback(null);
+    setTitle('Fix mobile checkout viewport');
+    setBody('Make checkout fit a 320px phone without horizontal scrolling. Keep cart total at $42.00 and keyboard checkout reachable.');
+    setContractorClaim('');
+    retryKeys.current.clear();
+    if (session) void fetchTasks();
+  }, [session?.csrf_token]);
+
+  const signIn = async (accessCode: string, persona: Persona) => {
+    setLoading(true);
+    setSessionError(null);
+    try {
+      const response = await fetch('/api/session', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_code: accessCode, persona }) });
+      if (!response.ok) throw new Error(await messageFor(response));
+      const authenticated: Session = await response.json();
+      setSession(authenticated);
+      setActiveTab(authenticated.role === 'contractor' ? 'contractor' : 'queue');
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : 'Unable to sign in.');
+    } finally { setLoading(false); }
+  };
+
+  const signOut = async () => {
+    if (!session) return;
+    setLoading(true);
+    try {
+      const response = await fetch('/api/session', { method: 'DELETE', credentials: 'same-origin',
+        headers: { 'X-CSRF-Token': session.csrf_token } });
+      if (response.ok || response.status === 401) setSession(null);
+      else setRequestError(await messageFor(response));
+    } catch { setRequestError('Unable to sign out. Please try again.'); }
+    finally { setLoading(false); }
+  };
+
+  const switchPersona = async (persona: Persona) => {
+    if (!session?.is_judge) return;
+    setLoading(true);
+    try {
+      const response = await fetch('/api/judge/role', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf_token },
+        body: JSON.stringify({ persona }) });
+      if (!response.ok) throw new Error(await messageFor(response));
+      setSession(await response.json());
+      setActiveTab(persona === 'owner' ? 'queue' : 'contractor');
+    } catch (error) { setRequestError(error instanceof Error ? error.message : 'Unable to switch persona.'); }
+    finally { setLoading(false); }
+  };
+
+  const domainRequest = async (path: string, body?: object) => {
+    if (!session) throw new Error('Sign in to the workspace.');
+    const encoded = body === undefined ? undefined : JSON.stringify(body);
+    const action = path + (encoded || '');
+    const key = retryKeys.current.get(action) || crypto.randomUUID();
+    retryKeys.current.set(action, key);
+    const response = await fetch(path, { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf_token, 'Idempotency-Key': key },
+      body: encoded });
+    if (response.ok) retryKeys.current.delete(action);
+    if (response.status === 401) setSession(null);
+    return response;
+  };
+
   const fetchTasks = async () => {
+    const identity = session?.csrf_token;
+    if (!identity) return;
     try {
       const res = await fetch('/api/v1/tasks');
+      if (currentIdentity.current !== identity) return;
+      if (res.status === 401) { setSession(null); return; }
+      if (!res.ok) throw new Error(await messageFor(res));
       if (res.ok) {
         const data = await res.json();
+        if (currentIdentity.current !== identity) return;
         setTasks(data);
         if (data.length > 0 && !currentCreatedTaskId) {
           setCurrentCreatedTaskId(data[0].id);
         }
       }
     } catch (e) {
-      console.error(e);
+      setRequestError(e instanceof Error ? e.message : 'Unable to load tasks.');
     }
   };
 
@@ -91,17 +182,13 @@ export default function App() {
     setLoading(true);
     setRequestError(null);
     try {
-      const res = await fetch('/api/v1/briefs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await domainRequest('/api/v1/briefs', {
           title,
           body,
           family,
           contractor_ref: contractorRef,
           amount_usd: amountUsd,
           expires_in_hours: 24,
-        }),
       });
       if (!res.ok) throw new Error(await errorMessage(res));
       if (res.ok) {
@@ -134,13 +221,9 @@ export default function App() {
     setLoading(true);
     setRequestError(null);
     try {
-      const res = await fetch('/api/v1/mandates/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await domainRequest('/api/v1/mandates/approve', {
           mandate_version_id: mandateVersionId,
           expected_digest: 'any',
-        }),
       });
       if (!res.ok) throw new Error(await errorMessage(res));
       if (res.ok) {
@@ -165,14 +248,10 @@ export default function App() {
     setLoading(true);
     setSubmissionFeedback(null);
     try {
-      const res = await fetch('/api/v1/deliveries/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await domainRequest('/api/v1/deliveries/submit', {
           task_id: taskId,
           artifact_ref: selectedArtifact,
           claim: contractorClaim,
-        }),
       });
       if (!res.ok) throw new Error(await errorMessage(res));
       await fetchTasks();
@@ -190,12 +269,14 @@ export default function App() {
   };
 
   const openReceiptModal = async (task: Task) => {
+    const identity = session?.csrf_token;
     setReceiptModalTask(task);
     setReceiptData(null);
     try {
       const res = await fetch(`/api/v1/receipts/${task.id}`);
       if (res.ok) {
         const data = await res.json();
+        if (currentIdentity.current !== identity) return;
         setReceiptData(data);
       }
     } catch (e) {
@@ -207,7 +288,7 @@ export default function App() {
     const taskId = currentCreatedTaskId || (tasks.length > 0 ? tasks[0].id : null);
     if (!taskId) return;
     try {
-      const res = await fetch(`/api/v1/judge/replay-task/${taskId}`, { method: 'POST' });
+      const res = await domainRequest(`/api/v1/judge/replay-task/${taskId}`);
       if (!res.ok) throw new Error(await errorMessage(res));
       const data = await res.json();
       setJudgeFeedback(`${data.message} Batch ID: ${data.sender_batch_id || 'N/A'}`);
@@ -219,7 +300,7 @@ export default function App() {
 
   const handleReset = async () => {
     try {
-      const res = await fetch('/api/v1/judge/reset', { method: 'POST' });
+      const res = await domainRequest('/api/v1/judge/reset');
       if (!res.ok) throw new Error(await errorMessage(res));
       const data = await res.json();
       setJudgeFeedback(`[Guarded Reset (FR-16)] ${data.message}`);
@@ -229,6 +310,9 @@ export default function App() {
       console.error(e);
     }
   };
+
+  if (!sessionLoaded) return <main className="session-page" role="status">Loading workspace session…</main>;
+  if (!session) return <SessionGate busy={loading} error={sessionError} onSignIn={signIn} />;
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -244,6 +328,8 @@ export default function App() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '16px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{
@@ -261,28 +347,15 @@ export default function App() {
           </span>
         </div>
 
-        {/* Persona Switcher */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <span style={{ fontSize: '13px', color: '#9ca3af' }}>Active Persona:</span>
-          <div style={{ display: 'flex', background: '#1f2937', padding: '3px', borderRadius: '6px' }}>
-            {(['owner', 'contractor', 'judge'] as const).map((r) => (
-              <button
-                key={r}
-                onClick={() => setRole(r)}
-                style={{
-                  background: role === r ? '#0284c7' : 'transparent',
-                  color: role === r ? 'white' : '#9ca3af',
-                  border: 'none',
-                  padding: '6px 14px',
-                  borderRadius: '4px',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                }}
-              >
-                {r === 'owner' ? 'Agency Owner' : r === 'contractor' ? 'Contractor Maya' : 'Judge Mode'}
-              </button>
-            ))}
-          </div>
+        <div className="session-controls">
+          <span>{session.is_judge ? 'Judge · ' : ''}{role === 'owner' ? 'Agency Owner' : session.recipient_ref === 'contractor_maya' ? 'Contractor Maya' : 'Contractor Leo'}</span>
+          {session.is_judge && (['owner', 'contractor_maya', 'contractor_leo'] as Persona[]).map(persona => (
+            <button key={persona} disabled={loading} onClick={() => void switchPersona(persona)}
+              aria-pressed={persona === (role === 'owner' ? 'owner' : session.recipient_ref)}>
+              {persona === 'owner' ? 'Owner' : persona === 'contractor_maya' ? 'Maya' : 'Leo'}
+            </button>
+          ))}
+          <button disabled={loading} onClick={() => void signOut()}>Sign out</button>
         </div>
       </header>
 
@@ -307,7 +380,7 @@ export default function App() {
         >
           Agency Work Queue ({tasks.length})
         </button>
-        <button
+        {role === 'owner' && <button
           onClick={() => setActiveTab('brief')}
           style={{
             padding: '14px 4px',
@@ -319,8 +392,8 @@ export default function App() {
           }}
         >
           Brief Composer & Compiler
-        </button>
-        <button
+        </button>}
+        {role === 'contractor' && <button
           onClick={() => setActiveTab('contractor')}
           style={{
             padding: '14px 4px',
@@ -332,8 +405,8 @@ export default function App() {
           }}
         >
           Contractor Portal
-        </button>
-        <button
+        </button>}
+        {session.is_judge && <button
           onClick={() => setActiveTab('judge')}
           style={{
             padding: '14px 4px',
@@ -345,7 +418,7 @@ export default function App() {
           }}
         >
           Judge Demo Controller (175s)
-        </button>
+        </button>}
       </div>
 
       {/* Main Content Area */}
@@ -609,7 +682,7 @@ export default function App() {
         {/* TAB 3: CONTRACTOR PORTAL */}
         {activeTab === 'contractor' && (
           <div style={{ maxWidth: '640px', margin: '0 auto', background: '#111827', padding: '24px', borderRadius: '8px', border: '1px solid #374151' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px' }}>Contractor Submission Portal (Maya Lin)</h2>
+            <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px' }}>Contractor Submission Portal ({session.recipient_ref === 'contractor_maya' ? 'Maya Lin' : 'Leo Vance'})</h2>
             <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
               Select an allowlisted fixture artifact version and submit your delivery claim for automated verification.
             </p>

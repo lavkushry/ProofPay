@@ -44,10 +44,17 @@ services:
     ports:
       - "127.0.0.1:${PROOFPAY_API_PORT:-8000}:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://proofpay_api:${PROOFPAY_API_PASSWORD:-local_api_only}@db:5432/proofpay
-      - ENVIRONMENT=development
-      - DEBUG=false
-      - FIXTURE_URL=http://fixture:8080
+      DATABASE_URL: postgresql+asyncpg://proofpay_api:${PROOFPAY_API_PASSWORD:-local_api_only}@db:5432/proofpay
+      ENVIRONMENT: development
+      DEBUG: "false"
+      FIXTURE_URL: http://fixture:8080
+      CORS_ORIGINS: '["http://localhost:${PROOFPAY_WEB_PORT:-3000}","http://127.0.0.1:${PROOFPAY_WEB_PORT:-3000}"]'
+      SESSION_COOKIE_SECURE: "false"
+      SESSION_CSRF_KEY: ${SESSION_CSRF_KEY:-local-only-session-key-change-before-deployment}
+      DEMO_JUDGE_ACCESS_CODE: ${DEMO_JUDGE_ACCESS_CODE:-local-judge-access}
+      DEMO_OWNER_ACCESS_CODE: ${DEMO_OWNER_ACCESS_CODE:-local-owner-access}
+      DEMO_MAYA_ACCESS_CODE: ${DEMO_MAYA_ACCESS_CODE:-local-maya-access}
+      DEMO_LEO_ACCESS_CODE: ${DEMO_LEO_ACCESS_CODE:-local-leo-access}
     command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
       migrate:
@@ -57,6 +64,19 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+
+  worker:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://proofpay_api:${PROOFPAY_API_PASSWORD:-local_api_only}@db:5432/proofpay
+      ENVIRONMENT: development
+      WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-120}
+      WORKER_HEARTBEAT_SECONDS: ${WORKER_HEARTBEAT_SECONDS:-20}
+    command: ["python", "-m", "backend.worker"]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   fixture:
     build:

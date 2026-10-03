@@ -7,14 +7,14 @@ alter tables. PostgreSQL 17 is required; SQLite remains a unit-test double.
 
 From the repository root, run `docker compose up --build`. The dependency order
 is PostgreSQL → administrative role provisioning → migration and idempotent
-base seed → API → web. Provisioning and migration containers exit on success;
+base seed → API/workflow worker → web. Provisioning and migration containers exit on success;
 the API health check requires the current Alembic revision. The runner receives
 no database credentials.
 
 Local example passwords in Compose and `.env.example` are development values.
 For deployment, use generated secrets and URL-encode passwords in connection
 URLs. Run administrative provisioning and migration as separate one-shot jobs;
-only the API connection belongs in the API environment. Supply executor
+only the API connection belongs in the API and workflow-worker environments. Supply executor
 credentials only to the future executor worker.
 
 ## Role boundaries
@@ -84,5 +84,10 @@ attempts, once-only ledger phases, evidence limits, webhook quarantine and
 actual API/executor logins. Business, AI and provider inputs are explicit test
 doubles; this suite makes no real sandbox-payment or model claim.
 
-Sessions, command execution, leased workers and guarded payouts remain held
-until their following implementation changes satisfy the corresponding gates.
+Revision `0004_command_leases` adds lease consistency, immutable job lineage,
+accepted-stage preservation and completed-job history protection. Versioned
+PR #6 databases upgrade normally without adoption. Existing inconsistent lease
+rows abort migration; inspect their history before a reviewed forward repair.
+
+Sessions and leased command processing are covered in the
+[workflow validation report](WORKFLOW_VALIDATION.md). Guarded payouts remain M5.

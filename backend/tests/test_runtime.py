@@ -25,7 +25,7 @@ def test_fixture_routes_serve_distinct_versions_and_baseline():
 def test_health_and_empty_queue_start(client):
     assert client.get("/livez").json()["status"] == "ok"
     assert client.get("/readyz").json()["workflow"] == "unavailable"
-    assert client.get("/api/v1/tasks").json() == []
+    assert client.get("/api/v1/tasks").status_code == 401
 
 
 def test_readiness_failure_is_503_and_redacts_database_error(client):
@@ -53,10 +53,10 @@ def test_readiness_failure_is_503_and_redacts_database_error(client):
     "/api/v1/judge/reset",
     f"/api/v1/judge/replay-task/{uuid.uuid4()}",
 ])
-def test_unfinished_mutations_are_held(client, path):
+def test_unfinished_mutations_require_authentication(client, path):
     response = client.post(path, json={})
-    assert response.status_code == 503
-    assert response.json()["detail"]["code"] == "WORKFLOW_UNAVAILABLE"
+    assert response.status_code == 401
+    assert response.json()["code"] == "UNAUTHORIZED"
 
 
 async def test_delivery_hold_creates_no_evidence_payment_or_budget(client):
@@ -64,7 +64,7 @@ async def test_delivery_hold_creates_no_evidence_payment_or_budget(client):
         "task_id": str(uuid.uuid4()), "artifact_ref": "checkout_mobile_fixed",
         "claim": "Ready to pay",
     })
-    assert response.status_code == 503
+    assert response.status_code == 401
     async with AsyncSessionLocal() as session:
         for model in (Delivery, PaymentAttempt, BudgetEntry):
             assert await session.scalar(select(func.count()).select_from(model)) == 0
