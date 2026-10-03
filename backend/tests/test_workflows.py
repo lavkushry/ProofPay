@@ -25,7 +25,7 @@ from backend.app.errors import APIError
 from backend.app.main import app
 from backend.app.services import commands, outbox
 from backend.app.services.auth import COOKIE, Actor
-from backend.app.services.compiler import CompileResult
+from backend.app.services.compiler import CompileResult, compilation_input
 from backend.tests.postgres_support import PASSWORDS, database_factory, graph, pg_engine, postgres_url
 from backend import worker
 from backend.worker import process_lease
@@ -477,8 +477,10 @@ def test_compile_command_enqueues_and_persists_validated_interaction(workspace, 
                 "ambiguities": [], "clarifying_questions": []}
     from backend.app.schemas.api_schemas import CheckProposal
     async def fake_compile(_contract, _revision, **_kwargs):
+        _prompt, input_digest = compilation_input(_contract, _revision)
         return CompileResult(CheckProposal.model_validate(proposal), "ready", "openai", "test-model",
-                             "compiler-v0.1", "proofpay-tools-v0.1", "b"*64, "c"*64, {"total_tokens": 1})
+                             "compiler-v0.1", "proofpay-tools-v0.1", input_digest,
+                             commands.canonical_digest(proposal), {"total_tokens": 1})
     monkeypatch.setattr(worker, "compile_revision", fake_compile)
     with pg_engine.connect() as connection:
         jobs = connection.execute(select(m.OutboxEvent.id, m.OutboxEvent.payload).where(

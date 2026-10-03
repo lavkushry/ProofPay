@@ -22,6 +22,9 @@ from backend.app.services.locking import lock_workspace
 COMMAND_FAMILIES = {
     "create_brief": "create_brief",
     "revise_brief": "revise_brief",
+    "create_mandate": "create_mandate",
+    "create_mandate_version": "create_mandate_version",
+    "approve_mandate": "approve_mandate",
     "submit_delivery": "submit_delivery",
     "contractor_submit_delivery": "submit_delivery",
 }
