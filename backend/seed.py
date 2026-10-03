@@ -6,14 +6,11 @@ import uuid
 from sqlalchemy import text
 
 from backend.app.config import settings
-from backend.app.database import AsyncSessionLocal, Base, engine
+from backend.app.database import AsyncSessionLocal, engine
 from backend.app.models import Agency, Contractor, DemoRun, User
 
 
 async def seed():
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-
     async with AsyncSessionLocal() as session:
         if engine.dialect.name == "postgresql":
             await session.execute(
