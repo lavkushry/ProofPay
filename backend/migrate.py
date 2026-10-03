@@ -12,7 +12,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 MIGRATIONS = Path(__file__).parent / "migrations"
-HEAD_REVISION = "0003_runtime_grants"
+HEAD_REVISION = "0004_command_leases"
 
 
 def alembic_config(connection=None):

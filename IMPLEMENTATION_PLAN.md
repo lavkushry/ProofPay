@@ -2,11 +2,13 @@
 
 Date: 2 October 2026
 Scope: the complete MVP, from the existing prototype through hosted demo and submission readiness.
-Status: implementation started; M0 runtime foundation merged in PR #4. M1 database migrations/integrity/roles are implemented on the next branch; sessions and durable commands follow. Milestone acceptance gates remain pending.
+Status: M0 runtime foundation merged in PR #4; M1 database migrations/integrity/roles merged in PR #6. The next change implements sessions, atomic command receipts and leased workflow processing, with PostgreSQL and browser acceptance. Real-model, provider and hosted-runner gates remain pending.
 
-Implementation tracking: [MVP roadmap #1](https://github.com/lavkushry/ProofPay/issues/1), [runtime foundation #2](https://github.com/lavkushry/ProofPay/issues/2), [persistence/authorization #3](https://github.com/lavkushry/ProofPay/issues/3), and [database foundation #5](https://github.com/lavkushry/ProofPay/issues/5). Runtime startup/proxying, pinned dependencies, idempotent base identities, removal of fabricated delivery/payment results, and regression/Compose checks landed in PR #4. The next change versions all 36 PostgreSQL tables, enforces source/financial integrity, separates runtime roles, and verifies fresh/legacy upgrades. See [database validation](docs/DATABASE_VALIDATION.md), [migration guide](docs/DATABASE_MIGRATIONS.md), and [API inventory](docs/API_IMPLEMENTATION_STATUS.md). Real model/provider/hosted-runner feasibility remains pending; M0 and M1 are not complete.
+Implementation tracking: [MVP roadmap #1](https://github.com/lavkushry/ProofPay/issues/1), [runtime foundation #2](https://github.com/lavkushry/ProofPay/issues/2), [persistence/authorization #3](https://github.com/lavkushry/ProofPay/issues/3), and [database foundation #5](https://github.com/lavkushry/ProofPay/issues/5). PR #6 versions all 36 PostgreSQL tables, enforces source/financial integrity, separates runtime roles and verifies fresh/legacy upgrades. The session/worker change adds authenticated personas, CSRF, replay/conflict handling, shared workspace locking, stage persistence and fenced completion. See [workflow validation](docs/WORKFLOW_VALIDATION.md), [database validation](docs/DATABASE_VALIDATION.md), [migration guide](docs/DATABASE_MIGRATIONS.md), and [API inventory](docs/API_IMPLEMENTATION_STATUS.md). M1 remains open until its session/worker change merges; M2 real compilation is next.
 
 ## 1. Outcome and planning basis
+
+The focused session/worker implementation is tracked in [issue #7](https://github.com/lavkushry/ProofPay/issues/7), with 81 local checks and actual Chromium evidence recorded in the workflow validation report.
 
 Deliver the full agency-owner, contractor, and judge journey: compile a brief into three approved checks, freeze payment authority, inspect real execution evidence, request correction when a claim contradicts that evidence, and release a sandbox payout only after independent backend guards pass. A receipt becomes paid only after matching a genuine successful provider item. Replaying the workflow must resolve to the existing financial obligation and attempt.
 

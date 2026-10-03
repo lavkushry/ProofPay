@@ -291,6 +291,8 @@ class OutboxEvent(Base):
     created_at = Column(DateTime(timezone=True), default=utc_now, server_default=text('CURRENT_TIMESTAMP'), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, server_default=text('CURRENT_TIMESTAMP'), nullable=False)
     __table_args__ = (
+        CheckConstraint("(state='leased' AND lease_token IS NOT NULL AND lease_until IS NOT NULL) OR (state<>'leased' AND lease_token IS NULL AND lease_until IS NULL)", name='outbox_lease_check'),
+        CheckConstraint("jsonb_typeof(payload)='object' AND jsonb_typeof(stage_state)='object'", name='outbox_json_check').ddl_if(dialect="postgresql"),
         ForeignKeyConstraint(['agency_id'], ['agencies.id']),
         CheckConstraint("state IN ('ready','leased','done','failed','held')"),
         CheckConstraint('attempt_count >= 0'),

@@ -16,6 +16,16 @@ class Settings(BaseSettings):
     PORT: int = 8000
     HOST: str = "0.0.0.0"
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+    SESSION_CSRF_KEY: SecretStr = SecretStr("")
+    SESSION_COOKIE_SECURE: bool = True
+    SESSION_TTL_SECONDS: int = Field(default=28800, ge=300, le=86400)
+    DEMO_JUDGE_ACCESS_CODE: SecretStr = SecretStr("")
+    DEMO_OWNER_ACCESS_CODE: SecretStr = SecretStr("")
+    DEMO_MAYA_ACCESS_CODE: SecretStr = SecretStr("")
+    DEMO_LEO_ACCESS_CODE: SecretStr = SecretStr("")
+    WORKER_LEASE_SECONDS: int = Field(default=120, ge=5, le=600)
+    WORKER_HEARTBEAT_SECONDS: int = Field(default=20, ge=1, le=60)
+    WORKER_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10)
 
     DEFAULT_AGENCY_ID: uuid.UUID = uuid.UUID("10000000-0000-4000-8000-000000000001")
     DEFAULT_AGENCY_NAME: str = "Apex Software Studio (Demo)"
