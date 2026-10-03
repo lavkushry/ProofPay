@@ -2,7 +2,7 @@
 
 Date: 2 October 2026
 Scope: the complete MVP, from the existing prototype through hosted demo and submission readiness.
-Status: M0 runtime foundation, M1 database/session/worker foundations, and the M2 trusted-catalog/brief/compiler/mandate APIs are implemented. Actual model evaluation, configured protected recipients, evidence execution, payouts and hosted-runner gates remain pending.
+Status: M0 runtime foundation, M1 database/session/worker foundations, M2 trusted-catalog/brief/compiler/mandate APIs, and M3 delivery/runner/evidence APIs are implemented. Actual model evaluation, configured protected recipients, grounded review, payouts and hosted-runner gates remain pending.
 
 Implementation tracking: [MVP roadmap #1](https://github.com/lavkushry/ProofPay/issues/1), [runtime foundation #2](https://github.com/lavkushry/ProofPay/issues/2), [persistence/authorization #3](https://github.com/lavkushry/ProofPay/issues/3), and [database foundation #5](https://github.com/lavkushry/ProofPay/issues/5). PR #6 versions all 36 PostgreSQL tables, enforces source/financial integrity, separates runtime roles and verifies fresh/legacy upgrades. The merged session/worker change adds authenticated personas, CSRF, replay/conflict handling, shared workspace locking, stage persistence and fenced completion. See [workflow validation](docs/WORKFLOW_VALIDATION.md), [database validation](docs/DATABASE_VALIDATION.md), [migration guide](docs/DATABASE_MIGRATIONS.md), [M2 validation](docs/M2_VALIDATION.md), and [API inventory](docs/API_IMPLEMENTATION_STATUS.md).
 
@@ -12,6 +12,8 @@ The focused session/worker implementation is tracked in [issue #7](https://githu
 
 Exact frozen mandate approval and supersession are tracked in [issue #11](https://github.com/lavkushry/ProofPay/issues/11), with authority, immutable-history and financial-preservation acceptance recorded in [mandate validation](docs/MANDATE_VALIDATION.md).
 
+Actual fixture execution and durable delivery evidence are tracked in [issue #13](https://github.com/lavkushry/ProofPay/issues/13). See [M3 validation](docs/M3_VALIDATION.md) for six real runner cases, immutable read-back, lease fencing and Compose isolation. Completed verification remains held for M4 review.
+
 Deliver the full agency-owner, contractor, and judge journey: compile a brief into three approved checks, freeze payment authority, inspect real execution evidence, request correction when a claim contradicts that evidence, and release a sandbox payout only after independent backend guards pass. A receipt becomes paid only after matching a genuine successful provider item. Replaying the workflow must resolve to the existing financial obligation and attempt.
 
 This plan follows [Project Context](00-PROJECT_CONTEXT.md), [PRD](02-PRD.md), [System Design](03-SYSTEM_DESIGN.md), [API Specification](04-API_SPEC.yaml), [Data Model](05-DATA_MODEL.md), and [AI Layer](06-AI_LAYER.md). Preserve their requirement IDs and acceptance scenarios EV01–EV16. Their historical “documentation only” status predates the code now in this repository; the inspection below describes the current starting point.
@@ -20,9 +22,9 @@ The fixed scope remains one agency, one fixture application, two sandbox recipie
 
 The six-week schedule comes from the existing project baseline. It is a target, conditional on provider access and team capacity. Verify external submission and hosting requirements during M0 before treating those dates as current external facts.
 
-## 2. Current implementation and gaps
+## 2. Initial prototype inspection and gaps
 
-Findings are from source inspection and a Python syntax parse on 2 October 2026. No application, database, model, browser, or PayPal integration was executed for this plan.
+These historical findings are from source inspection and a Python syntax parse on 2 October 2026, before implementation began. The status above and milestone validation reports record subsequent executed checks and remaining gaps.
 
 | Area | Existing implementation | Work required |
 | --- | --- | --- |
@@ -107,6 +109,8 @@ deployment-dependent gates. See [mandate validation](docs/MANDATE_VALIDATION.md)
 
 **Owner:** verification/backend. **Dependencies:** M1; M2 approved-check contract. **Target:** week 3. Fixture/template development can begin during week 2.
 
+**Implemented slice:** contractor-only durable capture, separate runner authentication, renewable/fenced leases, all eight trusted templates, verified HTTP source bytes and actual browser observations, immutable PNG/JSON ingestion, scoped downloads and stale-history preservation. All six artifact cases pass their expected outcomes; broken responsive checkout measures 544px scroll width at a 320px viewport. PostgreSQL corruption/concurrency/lease tests and actual Compose isolation pass. Approval/model/recipient inputs in acceptance are explicit doubles; grounded review and provider/hosting gates remain subsequent work. See [M3 validation](docs/M3_VALIDATION.md).
+
 1. Version the fixture manifest and six allowlisted artifacts: broken/corrected variants for each of the three families. Derive artifact hashes from actual content, not names or placeholder strings. Make API and keyboard defects independently observable.
 2. Implement all eight unique trusted templates: overflow, total preservation, keyboard reachability, API status/schema/total, keyboard activation and accessible name. Execute real browser/HTTP observations against the selected artifact. Unknown templates and timeouts must fail or hold, never default to pass.
 3. Implement authenticated runner claim/heartbeat/complete endpoints and polling. Bind work to the approved check set, artifact, delivery, mandate and lease. Bound runtime, resources, input size and network targets; use isolated browser contexts and deny arbitrary code/URLs and redirects outside allowed targets.
@@ -114,7 +118,7 @@ deployment-dependent gates. See [mandate validation](docs/MANDATE_VALIDATION.md)
 5. Upload genuine PNG/JSON artifacts and a complete manifest. Validate digests, check IDs, provenance, lease ownership and the specified size limits: 512 KiB per PNG and 64 KiB per JSON result. Store bytes in PostgreSQL and verify them on read-back.
 6. Keep older completed jobs inspectable. Before advancing a workflow, compare current delivery and mandate pointers so stale completion cannot authorize release.
 
-**Primary files:** `runner/runner.py`, new `runner/checks/`, `fixture/app.py`, fixture manifests/assets, `routers/deliveries.py`, `routers/evidence.py`; new internal runner routes.
+**Primary files:** `runner/runner.py`, `runner/contracts.py`, `runner/execution.py`, `fixture_contract/observations.py`, `routers/delivery_commands.py`, `routers/runner_jobs.py`, `routers/verification_reads.py`, and delivery/runner/evidence services.
 
 **Exit gate:** each broken artifact demonstrates its intended defect; each corrected artifact passes its three checks. The responsive case shows actual overflow at 320px using measured dimensions. Corrupted/foreign/missing evidence, lease loss and stale jobs cannot advance payment (EV03/EV04/EV13).
 

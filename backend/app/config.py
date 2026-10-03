@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     WORKER_LEASE_SECONDS: int = Field(default=120, ge=5, le=600)
     WORKER_HEARTBEAT_SECONDS: int = Field(default=20, ge=1, le=60)
     WORKER_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=10)
+    RUNNER_SERVICE_TOKEN: SecretStr = SecretStr("")
+    RUNNER_LEASE_SECONDS: int = Field(default=90, ge=35, le=300)
+    RUNNER_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=5)
 
     DEFAULT_AGENCY_ID: uuid.UUID = uuid.UUID("10000000-0000-4000-8000-000000000001")
     DEFAULT_AGENCY_NAME: str = "Apex Software Studio (Demo)"

@@ -91,3 +91,9 @@ rows abort migration; inspect their history before a reviewed forward repair.
 
 Sessions and leased command processing are covered in the
 [workflow validation report](WORKFLOW_VALIDATION.md). Guarded payouts remain M5.
+
+Revision `0005_verification` adds immutable verification inputs/completions and
+hashed evidence manifest storage. It preserves all existing rows and does not
+broaden financial grants. New canonical evidence reads require a validated
+manifest and matching stored bytes; legacy illustrative bundles without that
+proof cannot satisfy the new read-back contract. See [M3 validation](M3_VALIDATION.md).

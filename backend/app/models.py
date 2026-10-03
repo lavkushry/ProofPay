@@ -465,9 +465,11 @@ class VerificationJob(Base):
     lease_attempt = Column(Integer, default=0, server_default=text('0'), nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    completion_digest = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utc_now, server_default=text('CURRENT_TIMESTAMP'), nullable=False)
     __table_args__ = (
         CheckConstraint("state IN ('queued','running','completed','error','stale')"),
+        CheckConstraint("completion_digest IS NULL OR completion_digest ~ '^[0-9a-f]{64}$'", name="verification_completion_digest").ddl_if(dialect="postgresql"),
         UniqueConstraint(*['agency_id', 'id']),
         UniqueConstraint(*['agency_id', 'task_id', 'id']),
         UniqueConstraint(*['agency_id', 'task_id', 'delivery_id', 'id']),
@@ -488,6 +490,7 @@ class EvidenceBundle(Base):
     mandate_digest = Column(Text, nullable=False)
     bundle_digest = Column(Text, nullable=False)
     manifest_id = Column(GUID, nullable=False)
+    manifest_json = Column(UniversalJSON, nullable=False, default=dict, server_default=text("'{}'"))
     created_at = Column(DateTime(timezone=True), default=utc_now, server_default=text('CURRENT_TIMESTAMP'), nullable=False)
     __table_args__ = (
         UniqueConstraint(*['agency_id', 'id']),
