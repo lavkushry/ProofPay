@@ -10,6 +10,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.pool import NullPool
 
 from backend.app import models as m
+from fixture_contract.registry import load_contract
 from backend.migrate import upgrade_database
 from backend.provision_db import provision_roles
 
@@ -19,6 +20,7 @@ PASSWORDS = {
     "proofpay_executor": "test_executor_only",
 }
 DIGEST = "a" * 64
+TRUSTED_CONTRACT = load_contract()
 
 
 @pytest.fixture(scope="session")
@@ -84,7 +86,7 @@ def graph(pg_engine):
         insert(c, m.Contractor, "contractor", user_id=ids["owner"], recipient_ref="contractor_maya", display_name="Test recipient")
         insert(c, m.RecipientBinding, "binding", contractor_id=ids["contractor"], receiver_ciphertext=b"test-only-ciphertext", receiver_hash=DIGEST, key_version="test")
         insert(c, m.DemoRun, "run", state="active")
-        insert(c, m.FixtureManifest, "manifest", digest=DIGEST, manifest={"test_double": True})
+        insert(c, m.FixtureManifest, "manifest", digest=TRUSTED_CONTRACT.digest, manifest=TRUSTED_CONTRACT.model_dump(mode="json"))
         insert(c, m.ArtifactVersion, "artifact", manifest_id=ids["manifest"], artifact_ref="test-artifact", family="responsive_css", digest=DIGEST, relative_path="/test")
         insert(c, m.Brief, "brief", created_by=ids["owner"])
         insert(c, m.BriefRevision, "revision", brief_id=ids["brief"], title="Test", body="Test relational integrity", family="responsive_css", manifest_id=ids["manifest"], proposed_terms={}, digest=DIGEST)

@@ -16,7 +16,9 @@ services:
       retries: 5
 
   provision:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       ADMIN_DATABASE_URL: postgresql://proofpay:proofpay_password@db:5432/proofpay
       PROOFPAY_MIGRATOR_PASSWORD: ${PROOFPAY_MIGRATOR_PASSWORD:-local_migration_only}
@@ -28,7 +30,9 @@ services:
         condition: service_healthy
 
   migrate:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       MIGRATION_DATABASE_URL: postgresql+psycopg://proofpay_migrator:${PROOFPAY_MIGRATOR_PASSWORD:-local_migration_only}@db:5432/proofpay
       DATABASE_URL: postgresql+asyncpg://proofpay_migrator:${PROOFPAY_MIGRATOR_PASSWORD:-local_migration_only}@db:5432/proofpay
@@ -39,8 +43,8 @@ services:
 
   api:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
       - "127.0.0.1:${PROOFPAY_API_PORT:-8000}:8000"
     environment:
@@ -66,12 +70,25 @@ services:
       retries: 12
 
   worker:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://proofpay_api:${PROOFPAY_API_PASSWORD:-local_api_only}@db:5432/proofpay
       ENVIRONMENT: development
       WORKER_LEASE_SECONDS: ${WORKER_LEASE_SECONDS:-120}
       WORKER_HEARTBEAT_SECONDS: ${WORKER_HEARTBEAT_SECONDS:-20}
+      LLM_PROVIDER: ${LLM_PROVIDER:-unconfigured}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-45}
+      LLM_MAX_CALLS_PER_STAGE: ${LLM_MAX_CALLS_PER_STAGE:-2}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openai/gpt-4.1-mini}
+      OPENROUTER_HTTP_REFERER: ${OPENROUTER_HTTP_REFERER:-}
+      OPENROUTER_X_TITLE: ${OPENROUTER_X_TITLE:-ProofPay}
     command: ["python", "-m", "backend.worker"]
     restart: unless-stopped
     depends_on:
@@ -80,8 +97,8 @@ services:
 
   fixture:
     build:
-      context: ./fixture
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: fixture/Dockerfile
     ports:
       - "127.0.0.1:${PROOFPAY_FIXTURE_PORT:-8080}:8080"
 

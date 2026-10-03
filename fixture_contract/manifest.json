@@ -1,0 +1,161 @@
+{
+  "schema_version": "fixture-manifest-v1",
+  "fixture_ref": "checkout_fixture",
+  "version": 1,
+  "facts": {
+    "supported_widths": [
+      320
+    ],
+    "target_ref": "checkout",
+    "target_dom_id": "checkout",
+    "baseline_ref": "fixture_cart_v1",
+    "total_cents": 4200,
+    "currency": "USD",
+    "endpoint_ref": "cart_total",
+    "endpoint_path": "/api/cart-total",
+    "schema_ref": "cart_total_response_v1",
+    "control_ref": "checkout_pay",
+    "control_dom_id": "checkout_pay",
+    "accessible_name_ref": "checkout_pay_name_v1",
+    "accessible_name": "Pay now"
+  },
+  "families": [
+    {
+      "family": "responsive_css",
+      "name": "Responsive CSS and mobile layout",
+      "templates": [
+        {
+          "template_type": "viewport_no_horizontal_overflow",
+          "description": "Checkout fits the approved viewport without horizontal overflow.",
+          "params": {
+            "width": 320,
+            "target_ref": "checkout"
+          }
+        },
+        {
+          "template_type": "cart_total_unchanged",
+          "description": "Displayed cart total preserves the manifest baseline.",
+          "params": {
+            "baseline_ref": "fixture_cart_v1"
+          }
+        },
+        {
+          "template_type": "keyboard_checkout_reachable",
+          "description": "Checkout payment control remains reachable with Tab.",
+          "params": {
+            "control_ref": "checkout_pay"
+          }
+        }
+      ]
+    },
+    {
+      "family": "api_endpoint",
+      "name": "Cart-total API repair",
+      "templates": [
+        {
+          "template_type": "api_status",
+          "description": "The versioned cart-total endpoint responds with HTTP 200.",
+          "params": {
+            "target_ref": "cart_total",
+            "expected_status": 200
+          }
+        },
+        {
+          "template_type": "api_schema",
+          "description": "The cart-total response matches the registered schema.",
+          "params": {
+            "target_ref": "cart_total",
+            "schema": "cart_total_response_v1"
+          }
+        },
+        {
+          "template_type": "api_total_matches_fixture",
+          "description": "The API total and currency match the manifest baseline.",
+          "params": {
+            "target_ref": "cart_total",
+            "baseline_ref": "fixture_cart_v1"
+          }
+        }
+      ]
+    },
+    {
+      "family": "keyboard_accessibility",
+      "name": "Keyboard checkout accessibility",
+      "templates": [
+        {
+          "template_type": "keyboard_checkout_reachable",
+          "description": "Checkout payment control is reachable with Tab.",
+          "params": {
+            "control_ref": "checkout_pay"
+          }
+        },
+        {
+          "template_type": "keyboard_activation",
+          "description": "Pressing Enter activates the checkout payment control.",
+          "params": {
+            "control_ref": "checkout_pay",
+            "key": "Enter"
+          }
+        },
+        {
+          "template_type": "accessible_control_name",
+          "description": "The payment control has the manifest's accessible name.",
+          "params": {
+            "control_ref": "checkout_pay",
+            "name": "checkout_pay_name_v1"
+          }
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "artifact_ref": "checkout_mobile_broken",
+      "family": "responsive_css",
+      "label": "checkout mobile broken",
+      "relative_path": "/versions/checkout_mobile_broken",
+      "file": "assets/checkout_mobile_broken.html",
+      "digest": "38cac7694f7a1b944b5e72bac724e0eab053f1ac2c6eeac65a1cd2505fc9ec36"
+    },
+    {
+      "artifact_ref": "checkout_mobile_fixed",
+      "family": "responsive_css",
+      "label": "checkout mobile fixed",
+      "relative_path": "/versions/checkout_mobile_fixed",
+      "file": "assets/checkout_mobile_fixed.html",
+      "digest": "6a44b4477c9d3177db7f9e20d14773dc01ad83e690e2a353ad64d8611657f4e0"
+    },
+    {
+      "artifact_ref": "checkout_keyboard_fixed",
+      "family": "keyboard_accessibility",
+      "label": "checkout keyboard fixed",
+      "relative_path": "/versions/checkout_keyboard_fixed",
+      "file": "assets/checkout_keyboard_fixed.html",
+      "digest": "8b0b00b6345ec823530ac74753deb0ecc95bc8df73dd7f97c52de52bd087418b"
+    },
+    {
+      "artifact_ref": "checkout_keyboard_broken",
+      "family": "keyboard_accessibility",
+      "label": "checkout keyboard broken",
+      "relative_path": "/versions/checkout_keyboard_broken",
+      "file": "assets/checkout_keyboard_broken.html",
+      "digest": "a75eedfc841a390547c1705a554a5816db98a0fd42f477dcd02a8be0b318e250"
+    },
+    {
+      "artifact_ref": "checkout_api_broken",
+      "family": "api_endpoint",
+      "label": "checkout api broken",
+      "relative_path": "/versions/checkout_api_broken",
+      "file": "assets/checkout_api_broken.json",
+      "digest": "beeaa113ab78a285ad9096cad730bfd07bc3cd169ef91429c2a479d2b2fe7cde"
+    },
+    {
+      "artifact_ref": "checkout_api_fixed",
+      "family": "api_endpoint",
+      "label": "checkout api fixed",
+      "relative_path": "/versions/checkout_api_fixed",
+      "file": "assets/checkout_api_fixed.json",
+      "digest": "bdb27f509a14c40a46dda43824fe916c49f8ad9b6bb68da6015480b8e9632cb7"
+    }
+  ]
+}

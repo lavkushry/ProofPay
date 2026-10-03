@@ -67,3 +67,16 @@ class DeliveryCreate(StrictModel):
     mandate_version_id: uuid.UUID
     expected_task_version: int = Field(ge=1, strict=True)
     claim: str = Field(min_length=1, max_length=4000)
+
+
+class BriefRevisionCreate(StrictModel):
+    expected_revision: int = Field(ge=1, strict=True)
+    title: str = Field(min_length=1, max_length=160)
+    text: str = Field(min_length=1, max_length=4000)
+    family: Literal["responsive_css", "api_endpoint", "keyboard_accessibility"]
+    terms: PaymentTerms
+
+
+class CompileRequest(StrictModel):
+    expected_revision: int = Field(ge=1, strict=True)
+    expected_digest: str = Field(pattern=r"^[0-9a-f]{64}$")

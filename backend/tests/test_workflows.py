@@ -25,8 +25,11 @@ from backend.app.errors import APIError
 from backend.app.main import app
 from backend.app.services import commands, outbox
 from backend.app.services.auth import COOKIE, Actor
+from backend.app.services.compiler import CompileResult
 from backend.tests.postgres_support import PASSWORDS, database_factory, graph, pg_engine, postgres_url
+from backend import worker
 from backend.worker import process_lease
+from fixture_contract.registry import load_contract
 
 pytestmark = pytest.mark.postgres
 
@@ -450,3 +453,48 @@ asyncio.run(main())
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+
+
+def test_compile_command_enqueues_and_persists_validated_interaction(workspace, pg_engine, monkeypatch):
+    client, ids, factory = workspace
+    monkeypatch.setattr(settings, "LLM_PROVIDER", "openai")
+    monkeypatch.setattr(settings, "OPENAI_API_KEY", SecretStr("test-openai-key"))
+    session = login(client, code="owner-code")
+    key = uuid.uuid4()
+    captured = client.post("/api/briefs", json=brief_body(), headers=headers(session, uuid.uuid4()))
+    assert captured.status_code == 201, captured.text
+    brief = captured.json()
+    request = {"expected_revision": brief["revision"], "expected_digest": brief["digest"]}
+    response = client.post(f"/api/briefs/{brief['id']}/compile", json=request, headers=headers(session, key))
+    assert response.status_code == 202, response.text
+    assert client.post(f"/api/briefs/{brief['id']}/compile", json=request, headers=headers(session, key)).json() == response.json()
+
+    contract = load_contract()
+    family = contract.family("responsive_css")
+    proposal = {"checks": [{"check_id": f"C0{number}", "template_type": item.template_type,
+                             "params": item.params, "compiled_by": "ai", "approved": False}
+                for number, item in enumerate(family.templates, start=1)],
+                "ambiguities": [], "clarifying_questions": []}
+    from backend.app.schemas.api_schemas import CheckProposal
+    async def fake_compile(_contract, _revision, **_kwargs):
+        return CompileResult(CheckProposal.model_validate(proposal), "ready", "openai", "test-model",
+                             "compiler-v0.1", "proofpay-tools-v0.1", "b"*64, "c"*64, {"total_tokens": 1})
+    monkeypatch.setattr(worker, "compile_revision", fake_compile)
+    with pg_engine.connect() as connection:
+        jobs = connection.execute(select(m.OutboxEvent.id, m.OutboxEvent.payload).where(
+            m.OutboxEvent.event_type=="compile_requested")).all()
+        job_id = next(identifier for identifier, payload in jobs if payload["brief_id"] == brief["id"])
+        connection.execute(update(m.OutboxEvent).where(m.OutboxEvent.event_type=="brief_recorded",
+                         m.OutboxEvent.state=="ready").values(state="held"))
+        connection.commit()
+    lease = asyncio.run(outbox.claim(factory))
+    assert lease.id == job_id
+    asyncio.run(worker.process_lease(factory, lease))
+    with pg_engine.connect() as connection:
+        compilation = connection.execute(select(m.Compilation.__table__).where(m.Compilation.job_id==job_id)).mappings().one()
+        interactions = connection.execute(select(m.AIInteraction.__table__).where(m.AIInteraction.job_id==job_id)).mappings().all()
+        assert compilation["status"] == "ready" and any(item["validated"] for item in interactions)
+        assert any(item["error_code"] == "STARTED" for item in interactions)
+        assert connection.scalar(select(m.OutboxEvent.state).where(m.OutboxEvent.id==job_id)) == "done"
+    projection = client.get(f"/api/briefs/{brief['id']}/compilation")
+    assert projection.status_code == 200 and projection.json()["status"] == "ready"

@@ -8,9 +8,12 @@ from sqlalchemy import text
 from backend.app.config import settings
 from backend.app.database import AsyncSessionLocal, engine
 from backend.app.models import Agency, Contractor, DemoRun, User
+from backend.app.services.catalog import seed_catalog
+from fixture_contract.registry import load_contract
 
 
 async def seed():
+    contract = load_contract()  # Verify packaged bytes before opening a database transaction.
     async with AsyncSessionLocal() as session:
         if engine.dialect.name == "postgresql":
             await session.execute(
@@ -19,7 +22,9 @@ async def seed():
             )
         agency_id = settings.DEFAULT_AGENCY_ID
         if await session.get(Agency, agency_id):
-            print("Base identities already exist; balances and history preserved.")
+            await seed_catalog(session, agency_id, contract)
+            await session.commit()
+            print("Base identities/history preserved; trusted fixture catalog verified.")
             return
 
         agency = Agency(
@@ -56,8 +61,9 @@ async def seed():
         session.add(run)
         await session.flush()
         agency.current_demo_run_id = run.id
+        await seed_catalog(session, agency_id, contract)
         await session.commit()
-        print("Seeded base agency/personas; verified cases and receiver bindings remain pending.")
+        print("Seeded identities and trusted fixture catalog; model/verified cases/receiver bindings remain pending.")
 
 
 if __name__ == "__main__":

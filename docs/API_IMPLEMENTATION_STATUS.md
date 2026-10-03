@@ -11,15 +11,15 @@ Sessions and authorized job reads are implemented. Brief capture requires a conf
 | `create_demo_session` | POST | `/api/session` | Route exists; conformance pending |
 | `get_session` | GET | `/api/session` | Route exists; conformance pending |
 | `delete_session` | DELETE | `/api/session` | Route exists; conformance pending |
-| `list_contractors` | GET | `/api/contractors` | Pending |
-| `list_fixture_versions` | GET | `/api/fixtures/versions` | Pending |
-| `list_briefs` | GET | `/api/briefs` | Pending |
+| `list_contractors` | GET | `/api/contractors` | Route exists; conformance pending |
+| `list_fixture_versions` | GET | `/api/fixtures/versions` | Route exists; conformance pending |
+| `list_briefs` | GET | `/api/briefs` | Route exists; conformance pending |
 | `create_brief` | POST | `/api/briefs` | Route exists; conformance pending |
-| `get_brief` | GET | `/api/briefs/{brief_id}` | Pending |
-| `create_brief_revision` | POST | `/api/briefs/{brief_id}/revisions` | Pending |
-| `compile_brief` | POST | `/api/briefs/{brief_id}/compile` | Pending |
-| `list_compilations` | GET | `/api/briefs/{brief_id}/compilations` | Pending |
-| `get_compilation` | GET | `/api/compilations/{compilation_id}` | Pending |
+| `get_brief` | GET | `/api/briefs/{brief_id}` | Route exists; conformance pending |
+| `create_brief_revision` | POST | `/api/briefs/{brief_id}/revisions` | Route exists; conformance pending |
+| `compile_brief` | POST | `/api/briefs/{brief_id}/compile` | Route exists; conformance pending |
+| `list_compilations` | GET | `/api/briefs/{brief_id}/compilations` | Route exists; conformance pending |
+| `get_compilation` | GET | `/api/compilations/{compilation_id}` | Route exists; conformance pending |
 | `create_mandate` | POST | `/api/mandates` | Pending |
 | `get_mandate` | GET | `/api/mandates/{mandate_id}` | Pending |
 | `create_mandate_version` | POST | `/api/mandates/{mandate_id}/versions` | Pending |
@@ -66,6 +66,7 @@ Sessions and authorized job reads are implemented. Brief capture requires a conf
 
 These routes exist outside the target contract; migrate them in subsequent milestones.
 
+- `GET /api/briefs/{brief_id}/compilation`
 - `GET /api/v1/catalog/artifacts`
 - `GET /api/v1/catalog/families`
 - `GET /api/v1/catalog/recipients`
