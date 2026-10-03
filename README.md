@@ -8,7 +8,9 @@ ProofPay is being built for the PayPal AI Hackathon 2026. Its intended workflow 
 
 The foundation provides PostgreSQL 17 migrations and integrity constraints, restricted runtime roles, authenticated owner/contractor sessions, judge impersonation with preserved principal identity, atomic command receipts, and a leased workflow worker. The React preview uses server sessions. Broken/corrected checkout fixtures are available.
 
-Brief capture can persist an authority-free draft when a trusted fixture manifest is configured. The base seed supplies identities only, so capture reports `503 DEPENDENCY_UNAVAILABLE` until M2 configures that catalog. Compilation, approval, delivery verification, reset/replay and payouts remain held. Actual model integration, sandbox settlement/webhook/cancellation proof, runner polling and hosted judge access are pending. The optional `verification` profile contains the runner scaffold; its synthetic outputs are not used by the API.
+Brief capture and revisions use the seeded immutable fixture catalog. Durable structured compilation supports OpenAI, Gemini and OpenRouter. Canonical mandate APIs draft versions, approve an exact digest, freeze three validated checks and recipient/payment terms, and supersede prior authority while preserving the payment obligation and history. Compilation requires configured provider access; approval requires a confirmed protected recipient binding, which base seeding does not fabricate. See [mandate validation](docs/MANDATE_VALIDATION.md).
+
+Delivery verification, reset/replay and payouts remain held. Actual model evaluation, sandbox settlement/webhook/cancellation proof, runner polling and hosted judge access are pending. The optional `verification` profile contains the runner scaffold; its synthetic outputs are not used by the API.
 
 See [implementation milestones](IMPLEMENTATION_PLAN.md), the [GitHub roadmap](https://github.com/lavkushry/ProofPay/issues/1), and the [API coverage inventory](docs/API_IMPLEMENTATION_STATUS.md). The root `00`–`06` documents define the target product; their contracts do not imply completed implementation.
 

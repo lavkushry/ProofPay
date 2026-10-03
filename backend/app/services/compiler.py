@@ -230,7 +230,7 @@ async def _request(config: ProviderConfig, prompt: str, *, transport=None):
             for item in parsed["checks"]
         ):
             raise ValueError
-        proposal = CheckProposal.model_validate(parsed)
+        proposal = CheckProposal.model_validate(parsed, strict=True)
     except (KeyError, IndexError, TypeError, ValueError, ValidationError, json.JSONDecodeError) as error:
         raise CompilerError("MODEL_OUTPUT_INVALID") from error
     return proposal, usage

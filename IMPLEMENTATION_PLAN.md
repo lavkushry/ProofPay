@@ -2,13 +2,15 @@
 
 Date: 2 October 2026
 Scope: the complete MVP, from the existing prototype through hosted demo and submission readiness.
-Status: M0 runtime foundation, M1 database/session/worker foundations, and the M2 trusted-catalog/brief/compiler slice are implemented. Provider credentials, approval, evidence execution, payouts and hosted-runner gates remain pending.
+Status: M0 runtime foundation, M1 database/session/worker foundations, and the M2 trusted-catalog/brief/compiler/mandate APIs are implemented. Actual model evaluation, configured protected recipients, evidence execution, payouts and hosted-runner gates remain pending.
 
 Implementation tracking: [MVP roadmap #1](https://github.com/lavkushry/ProofPay/issues/1), [runtime foundation #2](https://github.com/lavkushry/ProofPay/issues/2), [persistence/authorization #3](https://github.com/lavkushry/ProofPay/issues/3), and [database foundation #5](https://github.com/lavkushry/ProofPay/issues/5). PR #6 versions all 36 PostgreSQL tables, enforces source/financial integrity, separates runtime roles and verifies fresh/legacy upgrades. The merged session/worker change adds authenticated personas, CSRF, replay/conflict handling, shared workspace locking, stage persistence and fenced completion. See [workflow validation](docs/WORKFLOW_VALIDATION.md), [database validation](docs/DATABASE_VALIDATION.md), [migration guide](docs/DATABASE_MIGRATIONS.md), [M2 validation](docs/M2_VALIDATION.md), and [API inventory](docs/API_IMPLEMENTATION_STATUS.md).
 
 ## 1. Outcome and planning basis
 
 The focused session/worker implementation is tracked in [issue #7](https://github.com/lavkushry/ProofPay/issues/7). M2 validation is recorded in [docs/M2_VALIDATION.md](docs/M2_VALIDATION.md), with provider calls covered by explicit HTTP transports and PostgreSQL worker completion covered by an end-to-end acceptance test.
+
+Exact frozen mandate approval and supersession are tracked in [issue #11](https://github.com/lavkushry/ProofPay/issues/11), with authority, immutable-history and financial-preservation acceptance recorded in [mandate validation](docs/MANDATE_VALIDATION.md).
 
 Deliver the full agency-owner, contractor, and judge journey: compile a brief into three approved checks, freeze payment authority, inspect real execution evidence, request correction when a claim contradicts that evidence, and release a sandbox payout only after independent backend guards pass. A receipt becomes paid only after matching a genuine successful provider item. Replaying the workflow must resolve to the existing financial obligation and attempt.
 
@@ -84,8 +86,11 @@ Findings are from source inspection and a Python syntax parse on 2 October 2026.
 
 Current slice: trusted manifests and six immutable fixture artifacts, owner-scoped
 brief revisions, provider-neutral structured compilation for OpenAI/Gemini/OpenRouter,
-and leased interaction persistence are implemented. Real provider credentials and
-mandate approval remain deployment-dependent follow-on gates.
+leased interaction persistence, draft versions, exact digest approval and immutable
+supersession are implemented. Approval revalidates compiler lineage and pins a
+confirmed recipient binding. PostgreSQL tests exercise all three families with an
+explicit model double; real provider evaluation and recipient provisioning remain
+deployment-dependent gates. See [mandate validation](docs/MANDATE_VALIDATION.md).
 
 1. Store brief revisions and trusted fixture manifests separately from compilation results. Validate the fixed family/recipient/currency scope at the API boundary.
 2. Implement the neutral model adapter, versioned prompts and `propose_checks` schema from `06-AI_LAYER.md`. Resolve templates and parameters against the trusted registry; the model returns no executable code or arbitrary target URLs.

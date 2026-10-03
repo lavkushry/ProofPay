@@ -32,3 +32,9 @@ The PostgreSQL suite includes capture, idempotent compile enqueueing, worker
 completion, interaction lineage and owner-scoped compilation reads. Real provider
 access remains an environment-dependent deployment check; tests use an explicit
 HTTP transport double and never claim external model execution.
+
+The mandate slice adds exact draft-digest approval, frozen payment/recipient terms
+and supersession; see [mandate validation](MANDATE_VALIDATION.md). Compiler call-start
+allocation and status/failure writes now lock and recheck the current lease. Worker
+completion independently revalidates proposal/input/output digests; a completion
+after a brief revision keeps its immutable interaction but projects as `stale`.

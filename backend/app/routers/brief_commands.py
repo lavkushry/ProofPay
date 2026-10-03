@@ -1,4 +1,4 @@
-"""Capture authority-free drafts; compilation/approval remain subsequent milestones."""
+"""Owner brief capture/revisions and durable structured compilation commands."""
 
 import uuid
 

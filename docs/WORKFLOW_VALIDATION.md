@@ -60,9 +60,10 @@ Screenshots: [login](screenshots/session-login.png),
 
 ## Limits
 
-This accepts M1 infrastructure and draft capture under a configured trusted
-catalog. Base seed contains no such catalog. Full canonical read-route parity,
-typed client/features, model compilation, approval/supersession, runner jobs,
-grounded review, provider execution, reset and hosted operational readiness
-remain future milestones. Stage recovery proves persisted output reuse for
-capture; it does not prove AI call budgets or provider exactly-once delivery.
+This report accepts M1 infrastructure and draft capture under a configured trusted
+catalog. The subsequent M2 slice seeds that catalog and adds durable compiler and
+mandate APIs; see [M2 validation](M2_VALIDATION.md) and [mandate validation](MANDATE_VALIDATION.md).
+Full canonical read-route parity, typed client/features, actual model evaluation,
+runner jobs, grounded review, provider execution, reset and hosted operational
+readiness remain pending. Capture-stage recovery here does not establish provider
+exactly-once delivery.

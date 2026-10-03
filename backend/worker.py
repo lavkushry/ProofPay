@@ -5,13 +5,16 @@ import signal
 import uuid
 
 from sqlalchemy import func, select, update
+from pydantic import ValidationError
 
 from backend.app.config import settings
 from backend.app.database import AsyncSessionLocal, engine
 from backend.app.errors import APIError
-from backend.app.models import AIInteraction, Brief, BriefRevision, Compilation, DeliveryTask, FixtureManifest
+from backend.app.models import AIInteraction, Agency, Brief, BriefRevision, Compilation, DeliveryTask, DemoRun, FixtureManifest, MandateVersion, OutboxEvent
+from backend.app.schemas.api_schemas import CheckProposal
+from backend.app.services.commands import canonical_digest
 from backend.app.services.catalog import validated_snapshot
-from backend.app.services.compiler import CompilerError, compilation_input, compile_revision, provider_config
+from backend.app.services.compiler import CompilerError, compilation_input, compile_revision, provider_config, validate_proposal
 from backend.app.services import outbox
 
 
@@ -41,6 +44,23 @@ async def apply_compile(db, job):
     if compilation is None or revision is None or revision.digest != job.payload.get("revision_digest"):
         raise APIError(409, "STALE_REVISION", "Compilation lineage is unavailable.")
     proposal = accepted.get("proposal")
+    manifest = await db.scalar(select(FixtureManifest).where(FixtureManifest.agency_id==job.agency_id,
+        FixtureManifest.id==revision.manifest_id))
+    if manifest is None or str(manifest.id) != job.payload.get("manifest_id"):
+        raise APIError(409, "STALE_COMPILATION", "Compilation manifest is unavailable.")
+    contract = validated_snapshot(manifest)
+    _prompt, digest = compilation_input(contract, revision)
+    try:
+        checked = CheckProposal.model_validate(proposal, strict=True)
+        if checked.model_dump(mode="json") != proposal:
+            raise ValueError("Incomplete compiler proposal")
+        status, _ = validate_proposal(checked, contract, revision.family)
+    except (ValidationError, TypeError, ValueError):
+        raise APIError(409, "STALE_COMPILATION", "Compilation output is invalid.") from None
+    if (accepted.get("input_digest") != digest or accepted.get("output_digest") != canonical_digest(proposal)
+        or accepted.get("status") != status):
+        raise APIError(409, "STALE_COMPILATION", "Compilation output does not match its inputs.")
+    current = await current_compile_source(db, job)
     interaction = AIInteraction(
         id=uuid.uuid4(), agency_id=job.agency_id, job_id=job.id, stage="compiler",
         brief_revision_id=revision.id, model_ref=accepted["provider"] + ":" + accepted["model"],
@@ -54,35 +74,62 @@ async def apply_compile(db, job):
     db.add(interaction)
     await db.flush()
     compilation.interaction_id = interaction.id
-    compilation.status = accepted["status"]
+    compilation.status = status if current is not None else "stale"
     compilation.proposal = proposal
     return {"compilation_id": str(compilation.id), "status": compilation.status,
             "interaction_id": str(interaction.id)}
 
 
+async def current_compile_source(db, job):
+    return (await db.execute(select(BriefRevision, FixtureManifest).join(Brief,
+        (Brief.agency_id==BriefRevision.agency_id)&(Brief.id==BriefRevision.brief_id))
+        .join(DeliveryTask, (DeliveryTask.agency_id==Brief.agency_id)&(DeliveryTask.brief_id==Brief.id))
+        .join(Agency, Agency.id==Brief.agency_id)
+        .join(DemoRun, (DemoRun.agency_id==Agency.id)&(DemoRun.id==Agency.current_demo_run_id))
+        .join(FixtureManifest, (FixtureManifest.agency_id==BriefRevision.agency_id)&
+              (FixtureManifest.id==BriefRevision.manifest_id))
+        .where(BriefRevision.agency_id==job.agency_id, BriefRevision.id==uuid.UUID(job.payload["revision_id"]),
+               BriefRevision.digest==job.payload["revision_digest"], Brief.current_revision_id==BriefRevision.id,
+               Brief.id==uuid.UUID(job.payload["brief_id"]), DeliveryTask.id==job.task_id,
+               DeliveryTask.demo_run_id==DemoRun.id, DemoRun.state=="active",
+               FixtureManifest.id==uuid.UUID(job.payload["manifest_id"])))).first()
+
+
+async def fenced_job(db, lease):
+    job = await db.scalar(select(OutboxEvent).where(*outbox.ownership(lease)).with_for_update())
+    if job is None:
+        raise outbox.LeaseLost()
+    return job
+
+
+async def recheck_fence(db, lease):
+    await db.flush()
+    if await db.scalar(select(OutboxEvent.id).where(*outbox.ownership(lease))) is None:
+        raise outbox.LeaseLost()
+
+
 async def _compile_input(factory, lease):
     async with factory() as db:
-        revision = await db.scalar(select(BriefRevision).where(
-            BriefRevision.agency_id==lease.agency_id,
-            BriefRevision.id==uuid.UUID(lease.payload["revision_id"])))
-        manifest = await db.scalar(select(FixtureManifest).where(
-            FixtureManifest.agency_id==lease.agency_id,
-            FixtureManifest.id==uuid.UUID(lease.payload["manifest_id"])))
-        if revision is None or manifest is None or revision.digest != lease.payload.get("revision_digest"):
+        row = await current_compile_source(db, lease)
+        if row is None:
             raise APIError(409, "STALE_REVISION", "Compilation lineage is unavailable.")
+        revision, manifest = row
         return revision, validated_snapshot(manifest)
 
 
 async def _mark_compilation_running(factory, lease):
     async with factory.begin() as db:
+        await fenced_job(db, lease)
         await db.execute(update(Compilation).where(
             Compilation.agency_id==lease.agency_id, Compilation.job_id==lease.id,
-            Compilation.status=="queued").values(status="running"))
+            Compilation.status.in_(("queued", "failed"))).values(status="running"))
+        await recheck_fence(db, lease)
 
 
 async def _record_compile_failure(factory, lease, revision, contract, error):
     _prompt, input_digest = compilation_input(contract, revision)
     async with factory.begin() as db:
+        await fenced_job(db, lease)
         interaction = AIInteraction(
             id=uuid.uuid4(), agency_id=lease.agency_id, job_id=lease.id, stage="compiler",
             brief_revision_id=revision.id, model_ref=settings.LLM_PROVIDER or "unconfigured",
@@ -95,12 +142,16 @@ async def _record_compile_failure(factory, lease, revision, contract, error):
         await db.execute(update(Compilation).where(
             Compilation.agency_id==lease.agency_id, Compilation.job_id==lease.id,
             Compilation.status=="running").values(status="failed"))
+        await recheck_fence(db, lease)
 
 
 async def _record_compile_start(factory, lease, revision, contract):
     config = provider_config()
     _prompt, input_digest = compilation_input(contract, revision)
     async with factory.begin() as db:
+        await fenced_job(db, lease)
+        if await current_compile_source(db, lease) is None:
+            raise APIError(409, "STALE_REVISION", "Compilation inputs changed before model invocation.")
         calls = await db.scalar(select(func.count()).select_from(AIInteraction).where(
             AIInteraction.agency_id==lease.agency_id, AIInteraction.job_id==lease.id,
             AIInteraction.stage=="compiler", AIInteraction.error_code=="STARTED"))
@@ -114,6 +165,7 @@ async def _record_compile_start(factory, lease, revision, contract):
             input_refs={"brief_revision_id": str(revision.id), "manifest_id": lease.payload["manifest_id"]},
             output=None, output_digest=None, validated=False, error_code="STARTED", usage=None,
         ))
+        await recheck_fence(db, lease)
     return config
 
 
@@ -142,12 +194,24 @@ async def process_lease(factory, lease):
     if lease.event_type == "compile_requested":
         await process_compile(factory, lease)
         return
+    if lease.event_type == "mandate_recorded":
+        await outbox.complete(factory, lease, apply_mandate_recorded)
+        return
     if lease.event_type != "brief_recorded":
         await outbox.fail(factory, lease, "UNSUPPORTED_JOB", held=True)
         return
     if "capture" not in lease.stage_state:
         await outbox.store_stage_output(factory, lease, "capture", {"brief_id": lease.payload["brief_id"]})
     await outbox.complete(factory, lease, apply_brief_recorded)
+
+
+async def apply_mandate_recorded(db, job):
+    version = await db.scalar(select(MandateVersion).where(MandateVersion.agency_id==job.agency_id,
+        MandateVersion.id==uuid.UUID(job.payload["version_id"]), MandateVersion.task_id==job.task_id,
+        MandateVersion.mandate_id==uuid.UUID(job.payload["mandate_id"])))
+    if version is None:
+        raise APIError(409, "STALE_MANDATE", "Recorded mandate lineage is unavailable.")
+    return {"mandate_id": str(version.mandate_id), "version_id": str(version.id)}
 
 
 async def heartbeat_loop(factory, lease):

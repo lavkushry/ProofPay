@@ -23,6 +23,9 @@ async def enqueue(db, actor, brief_id, request, correlation_id, key):
         await lock_workspace(db, actor.agency_id, task_id=None)
         await reauthorize(db, actor)
         row = await owned_brief(db, actor, brief_id)
+        receipt = await db.scalar(receipt_query(actor, "compile_brief", key))
+        if receipt is not None:
+            return replay(receipt, digest)
         brief, revision, task, manifest = row
         if revision.revision != request.expected_revision or revision.digest != request.expected_digest:
             raise APIError(409, "STALE_REVISION", "The brief changed; reload it before compiling.")

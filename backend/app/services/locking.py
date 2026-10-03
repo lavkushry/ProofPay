@@ -14,12 +14,14 @@ async def lock_workspace(db, agency_id, *, task_id=None, obligation_id=None, man
         raise APIError(404, "NOT_FOUND", "Workspace not found.")
     if not await db.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": key}):
         raise APIError(409, "WORKSPACE_BUSY", "Workspace is busy; retry the same command.", retryable=True)
-    agency = await db.scalar(select(Agency).where(Agency.id==agency_id).with_for_update())
+    agency = await db.scalar(select(Agency).where(Agency.id==agency_id).with_for_update()
+                            .execution_options(populate_existing=True))
     # Agency allowance → task/obligation → mandate → attempt → item projection.
     for model, identifier in ((DeliveryTask, task_id), (PaymentObligation, obligation_id),
                               (MandateVersion, mandate_version_id), (PaymentAttempt, attempt_id)):
         if identifier is not None:
-            row = await db.scalar(select(model).where(model.agency_id==agency_id, model.id==identifier).with_for_update())
+            row = await db.scalar(select(model).where(model.agency_id==agency_id, model.id==identifier)
+                                  .with_for_update().execution_options(populate_existing=True))
             if row is None:
                 raise APIError(404, "NOT_FOUND", "Command resource not found.")
     if attempt_id is not None:
