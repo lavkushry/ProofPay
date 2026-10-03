@@ -8,7 +8,7 @@ from backend.app.errors import install_errors
 from backend.app.services.auth import get_actor
 from backend.app.routers import (
     health, sessions, catalog, briefs, mandates, tasks,
-    deliveries, evidence, receipts, judge, brief_commands, jobs, delivery_commands
+    catalog_canonical, deliveries, evidence, receipts, judge, brief_commands, jobs, delivery_commands
 )
 
 @asynccontextmanager
@@ -36,6 +36,7 @@ install_errors(app)
 app.include_router(health.router)
 app.include_router(sessions.router)
 app.include_router(catalog.router, dependencies=[Depends(get_actor)])
+app.include_router(catalog_canonical.router, dependencies=[Depends(get_actor)])
 app.include_router(brief_commands.router)
 app.include_router(delivery_commands.router)
 app.include_router(jobs.router)

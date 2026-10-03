@@ -1,15 +1,17 @@
-"""Workflow worker with no model/provider credentials or financial database grants."""
+"""Workflow worker with provider credentials but no financial database grants."""
 
 import asyncio
 import signal
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 
 from backend.app.config import settings
 from backend.app.database import AsyncSessionLocal, engine
 from backend.app.errors import APIError
-from backend.app.models import Brief, BriefRevision, DeliveryTask
+from backend.app.models import AIInteraction, Brief, BriefRevision, Compilation, DeliveryTask, FixtureManifest
+from backend.app.services.catalog import validated_snapshot
+from backend.app.services.compiler import CompilerError, compilation_input, compile_revision, provider_config
 from backend.app.services import outbox
 
 
@@ -26,7 +28,120 @@ async def apply_brief_recorded(db, job):
     return {"resource_id": str(brief_id), "hold_reasons": []}
 
 
+async def apply_compile(db, job):
+    accepted = job.stage_state.get("compile", {}).get("output")
+    if not isinstance(accepted, dict):
+        raise APIError(409, "STALE_COMPILATION", "Compilation output is unavailable.")
+    revision_id = uuid.UUID(job.payload["revision_id"])
+    compilation = await db.scalar(select(Compilation).where(
+        Compilation.agency_id==job.agency_id, Compilation.job_id==job.id,
+        Compilation.brief_revision_id==revision_id).with_for_update())
+    revision = await db.scalar(select(BriefRevision).where(
+        BriefRevision.agency_id==job.agency_id, BriefRevision.id==revision_id))
+    if compilation is None or revision is None or revision.digest != job.payload.get("revision_digest"):
+        raise APIError(409, "STALE_REVISION", "Compilation lineage is unavailable.")
+    proposal = accepted.get("proposal")
+    interaction = AIInteraction(
+        id=uuid.uuid4(), agency_id=job.agency_id, job_id=job.id, stage="compiler",
+        brief_revision_id=revision.id, model_ref=accepted["provider"] + ":" + accepted["model"],
+        prompt_version=accepted["prompt_version"], schema_version=accepted["schema_version"],
+        input_digest=accepted["input_digest"],
+        input_refs={"brief_revision_id": str(revision.id), "manifest_id": job.payload["manifest_id"]},
+        output=proposal, output_digest=accepted["output_digest"],
+        validated=accepted["status"] == "ready", error_code=None if accepted["status"] == "ready" else "AMBIGUOUS",
+        usage=accepted.get("usage"),
+    )
+    db.add(interaction)
+    await db.flush()
+    compilation.interaction_id = interaction.id
+    compilation.status = accepted["status"]
+    compilation.proposal = proposal
+    return {"compilation_id": str(compilation.id), "status": compilation.status,
+            "interaction_id": str(interaction.id)}
+
+
+async def _compile_input(factory, lease):
+    async with factory() as db:
+        revision = await db.scalar(select(BriefRevision).where(
+            BriefRevision.agency_id==lease.agency_id,
+            BriefRevision.id==uuid.UUID(lease.payload["revision_id"])))
+        manifest = await db.scalar(select(FixtureManifest).where(
+            FixtureManifest.agency_id==lease.agency_id,
+            FixtureManifest.id==uuid.UUID(lease.payload["manifest_id"])))
+        if revision is None or manifest is None or revision.digest != lease.payload.get("revision_digest"):
+            raise APIError(409, "STALE_REVISION", "Compilation lineage is unavailable.")
+        return revision, validated_snapshot(manifest)
+
+
+async def _mark_compilation_running(factory, lease):
+    async with factory.begin() as db:
+        await db.execute(update(Compilation).where(
+            Compilation.agency_id==lease.agency_id, Compilation.job_id==lease.id,
+            Compilation.status=="queued").values(status="running"))
+
+
+async def _record_compile_failure(factory, lease, revision, contract, error):
+    _prompt, input_digest = compilation_input(contract, revision)
+    async with factory.begin() as db:
+        interaction = AIInteraction(
+            id=uuid.uuid4(), agency_id=lease.agency_id, job_id=lease.id, stage="compiler",
+            brief_revision_id=revision.id, model_ref=settings.LLM_PROVIDER or "unconfigured",
+            prompt_version=settings.COMPILER_PROMPT_VERSION, schema_version=settings.SCHEMA_VERSION,
+            input_digest=input_digest,
+            input_refs={"brief_revision_id": str(revision.id), "manifest_id": lease.payload["manifest_id"]},
+            output=None, output_digest=None, validated=False, error_code=error.code, usage=None,
+        )
+        db.add(interaction)
+        await db.execute(update(Compilation).where(
+            Compilation.agency_id==lease.agency_id, Compilation.job_id==lease.id,
+            Compilation.status=="running").values(status="failed"))
+
+
+async def _record_compile_start(factory, lease, revision, contract):
+    config = provider_config()
+    _prompt, input_digest = compilation_input(contract, revision)
+    async with factory.begin() as db:
+        calls = await db.scalar(select(func.count()).select_from(AIInteraction).where(
+            AIInteraction.agency_id==lease.agency_id, AIInteraction.job_id==lease.id,
+            AIInteraction.stage=="compiler", AIInteraction.error_code=="STARTED"))
+        if calls >= settings.LLM_MAX_CALLS_PER_STAGE:
+            raise CompilerError("CALL_BUDGET_EXCEEDED")
+        db.add(AIInteraction(
+            id=uuid.uuid4(), agency_id=lease.agency_id, job_id=lease.id, stage="compiler",
+            brief_revision_id=revision.id, model_ref=config.name + ":" + config.model,
+            prompt_version=settings.COMPILER_PROMPT_VERSION, schema_version=settings.SCHEMA_VERSION,
+            input_digest=input_digest,
+            input_refs={"brief_revision_id": str(revision.id), "manifest_id": lease.payload["manifest_id"]},
+            output=None, output_digest=None, validated=False, error_code="STARTED", usage=None,
+        ))
+    return config
+
+
+async def process_compile(factory, lease):
+    if "compile" not in lease.stage_state:
+        await _mark_compilation_running(factory, lease)
+        revision, contract = await _compile_input(factory, lease)
+        try:
+            config = await _record_compile_start(factory, lease, revision, contract)
+            result = await compile_revision(contract, revision, config=config)
+        except CompilerError as error:
+            await _record_compile_failure(factory, lease, revision, contract, error)
+            raise
+        output = {
+            "proposal": result.proposal.model_dump(mode="json"), "status": result.status,
+            "provider": result.provider, "model": result.model, "prompt_version": result.prompt_version,
+            "schema_version": result.schema_version, "input_digest": result.input_digest,
+            "output_digest": result.output_digest, "usage": result.usage,
+            "reasons": list(result.reasons),
+        }
+        await outbox.store_stage_output(factory, lease, "compile", output)
+    await outbox.complete(factory, lease, apply_compile)
+
+
 async def process_lease(factory, lease):
+    if lease.event_type == "compile_requested":
+        await process_compile(factory, lease)
+        return
     if lease.event_type != "brief_recorded":
         await outbox.fail(factory, lease, "UNSUPPORTED_JOB", held=True)
         return
@@ -59,6 +174,11 @@ async def run_once(factory=AsyncSessionLocal):
             await outbox.fail(factory, lease, error.code, held=not error.retryable, max_attempts=settings.WORKER_MAX_ATTEMPTS)
         except outbox.LeaseLost:
             pass
+    except CompilerError as error:
+        try:
+            await outbox.fail(factory, lease, error.code, held=not error.retryable, max_attempts=settings.WORKER_MAX_ATTEMPTS)
+        except outbox.LeaseLost:
+            pass
     except Exception:
         # Never print exception strings, source bodies, tokens or DB parameters.
         try:
@@ -79,7 +199,7 @@ async def main():
     loop = asyncio.get_running_loop()
     for name in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(name, stopping.set)
-    print("Workflow worker started; model, verification and financial handlers remain unavailable.", flush=True)
+    print("Workflow worker started; model calls run only in leased compilation stages.", flush=True)
     try:
         while not stopping.is_set():
             if not await run_once():

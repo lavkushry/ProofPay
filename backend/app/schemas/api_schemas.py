@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class SessionUser(BaseModel):
     user_id: uuid.UUID
@@ -23,6 +23,7 @@ class BriefCreateRequest(BaseModel):
     expires_in_hours: int = Field(default=24, ge=1)
 
 class CheckItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     check_id: str = Field(description="'C01', 'C02', 'C03'")
     template_type: str
     params: Dict[str, Any]
@@ -30,9 +31,10 @@ class CheckItem(BaseModel):
     approved: bool = False
 
 class CheckProposal(BaseModel):
-    checks: List[CheckItem] = []
-    ambiguities: List[str] = []
-    clarifying_questions: List[str] = []
+    model_config = ConfigDict(extra="forbid")
+    checks: List[CheckItem] = Field(default_factory=list)
+    ambiguities: List[str] = Field(default_factory=list)
+    clarifying_questions: List[str] = Field(default_factory=list)
 
 class BriefResponse(BaseModel):
     id: uuid.UUID

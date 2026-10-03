@@ -34,9 +34,20 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "postgresql+asyncpg://proofpay_api:local_api_only@localhost:5432/proofpay"
     FIXTURE_URL: str = "http://localhost:8080"
-    LLM_PROVIDER: str = "unconfigured"
+    LLM_PROVIDER: Literal["unconfigured", "openai", "gemini", "openrouter"] = "unconfigured"
+    LLM_TIMEOUT_SECONDS: int = Field(default=45, ge=5, le=180)
+    LLM_MAX_CALLS_PER_STAGE: int = Field(default=2, ge=1, le=2)
+    OPENAI_BASE_URL: Literal["https://api.openai.com/v1"] = "https://api.openai.com/v1"
+    OPENAI_MODEL: str = "gpt-4.1-mini"
+    GEMINI_BASE_URL: Literal["https://generativelanguage.googleapis.com/v1beta"] = "https://generativelanguage.googleapis.com/v1beta"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    OPENROUTER_BASE_URL: Literal["https://openrouter.ai/api/v1"] = "https://openrouter.ai/api/v1"
+    OPENROUTER_MODEL: str = "openai/gpt-4.1-mini"
+    OPENROUTER_HTTP_REFERER: str = ""
+    OPENROUTER_X_TITLE: str = "ProofPay"
     GEMINI_API_KEY: SecretStr = SecretStr("")
     OPENAI_API_KEY: SecretStr = SecretStr("")
+    OPENROUTER_API_KEY: SecretStr = SecretStr("")
     COMPILER_PROMPT_VERSION: str = "compiler-v0.1"
     REVIEWER_PROMPT_VERSION: str = "reviewer-v0.1"
     SCHEMA_VERSION: str = "proofpay-tools-v0.1"

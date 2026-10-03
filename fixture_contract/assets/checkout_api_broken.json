@@ -1,0 +1,6 @@
+{
+  "status_code": 500,
+  "body": {
+    "error": "cart totals unavailable"
+  }
+}

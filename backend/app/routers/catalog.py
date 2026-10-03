@@ -1,63 +1,35 @@
 from fastapi import APIRouter, Depends
-from typing import List, Dict, Any
-from backend.app.services.auth import require_owner
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from backend.app.database import get_db
+from backend.app.models import Contractor
+from backend.app.services.auth import Actor, get_actor, require_owner
+from backend.app.services.catalog import current_manifest
 
 router = APIRouter(prefix="/api/v1/catalog", tags=["Catalog"])
 
+
+async def _families(db, actor):
+    _manifest, contract = await current_manifest(db, actor.agency_id)
+    return [family.model_dump(mode="json") for family in contract.families]
+
+
 @router.get("/families")
-async def list_supported_families() -> List[Dict[str, Any]]:
-    return [
-        {
-            "family": "responsive_css",
-            "name": "Responsive CSS & Mobile Layout",
-            "description": "Ensure checkout fits a 320px viewport without horizontal overflow while keeping cart total and keyboard navigation working.",
-            "target_fixture": "checkout_fixture",
-            "templates": ["viewport_no_horizontal_overflow", "cart_total_unchanged", "keyboard_checkout_reachable"]
-        },
-        {
-            "family": "api_endpoint",
-            "name": "API Endpoint Repair",
-            "description": "Verify cart-total endpoint returns HTTP 200, valid schema, and exact calculated total.",
-            "target_fixture": "checkout_fixture",
-            "templates": ["api_status", "api_schema", "api_total_matches_fixture"]
-        },
-        {
-            "family": "keyboard_accessibility",
-            "name": "Keyboard Accessibility",
-            "description": "Ensure payment button can be reached via Tab, activated via Enter, and has an accessible name.",
-            "target_fixture": "checkout_fixture",
-            "templates": ["keyboard_checkout_reachable", "keyboard_activation", "accessible_control_name"]
-        }
-    ]
+async def list_supported_families(actor: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
+    return await _families(db, actor)
+
 
 @router.get("/recipients", dependencies=[Depends(require_owner)])
-async def list_contractors() -> List[Dict[str, Any]]:
-    return [
-        {
-            "recipient_ref": "contractor_maya",
-            "display_name": "Maya Lin (Frontend Specialist)",
-            "currency": "USD"
-        },
-        {
-            "recipient_ref": "contractor_leo",
-            "display_name": "Leo Vance (Fullstack Contractor)",
-            "currency": "USD"
-        }
-    ]
+async def list_contractors(actor: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(select(Contractor).where(Contractor.agency_id==actor.agency_id)
+             .order_by(Contractor.recipient_ref))).scalars()
+    return [{"id": str(item.id), "recipient_ref": item.recipient_ref,
+             "display_name": item.display_name, "environment": "sandbox"} for item in rows]
+
 
 @router.get("/artifacts")
-async def list_artifacts() -> List[Dict[str, Any]]:
-    return [
-        {
-            "artifact_ref": "checkout_mobile_broken",
-            "name": "v1.0.1-broken (Fixed width checkout, overflows at 320px)",
-            "version": "1.0.1",
-            "is_corrected": False
-        },
-        {
-            "artifact_ref": "checkout_mobile_fixed",
-            "name": "v1.0.2-corrected (Fluid width checkout, fits 320px cleanly)",
-            "version": "1.0.2",
-            "is_corrected": True
-        }
-    ]
+async def list_artifacts(actor: Actor = Depends(get_actor), db: AsyncSession = Depends(get_db)):
+    _manifest, contract = await current_manifest(db, actor.agency_id)
+    return [{"artifact_ref": item.artifact_ref, "family": item.family, "label": item.label,
+             "digest": item.digest, "relative_path": item.relative_path} for item in contract.artifacts]

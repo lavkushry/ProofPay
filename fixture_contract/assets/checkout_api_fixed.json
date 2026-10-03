@@ -1,0 +1,9 @@
+{
+  "status_code": 200,
+  "body": {
+    "status": 200,
+    "schema": "cart_total_response_v1",
+    "total_cents": 4200,
+    "currency": "USD"
+  }
+}

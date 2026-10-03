@@ -21,6 +21,7 @@ from backend.app.services.locking import lock_workspace
 # Public route aliases converge before hashing and receipt lookup.
 COMMAND_FAMILIES = {
     "create_brief": "create_brief",
+    "revise_brief": "revise_brief",
     "submit_delivery": "submit_delivery",
     "contractor_submit_delivery": "submit_delivery",
 }
