@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     DEFAULT_ADVISORY_LOCK_KEY: int = 847291038472
     WORKSPACE_PRINCIPAL_LIMIT_CENTS: int = Field(default=1000000, gt=0)
 
-    DATABASE_URL: str = "sqlite+aiosqlite:///./proofpay.db"
+    DATABASE_URL: str = "postgresql+asyncpg://proofpay_api:local_api_only@localhost:5432/proofpay"
     FIXTURE_URL: str = "http://localhost:8080"
     LLM_PROVIDER: str = "unconfigured"
     GEMINI_API_KEY: SecretStr = SecretStr("")

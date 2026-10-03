@@ -2,9 +2,9 @@
 
 Date: 2 October 2026
 Scope: the complete MVP, from the existing prototype through hosted demo and submission readiness.
-Status: implementation started; M0 runtime foundation is under review and milestone acceptance gates remain pending.
+Status: implementation started; M0 runtime foundation merged in PR #4. M1 database migrations/integrity/roles are implemented on the next branch; sessions and durable commands follow. Milestone acceptance gates remain pending.
 
-Implementation tracking: [MVP roadmap #1](https://github.com/lavkushry/ProofPay/issues/1), [runtime foundation #2](https://github.com/lavkushry/ProofPay/issues/2), and [persistence/authorization #3](https://github.com/lavkushry/ProofPay/issues/3). The first implementation repairs startup/proxying, pins dependencies, seeds base identities idempotently, removes fabricated delivery/payment results, and adds regression/Compose checks. See [API inventory](docs/API_IMPLEMENTATION_STATUS.md) for contract coverage. Real model/provider/hosted-runner feasibility remains pending; M0 is not complete.
+Implementation tracking: [MVP roadmap #1](https://github.com/lavkushry/ProofPay/issues/1), [runtime foundation #2](https://github.com/lavkushry/ProofPay/issues/2), [persistence/authorization #3](https://github.com/lavkushry/ProofPay/issues/3), and [database foundation #5](https://github.com/lavkushry/ProofPay/issues/5). Runtime startup/proxying, pinned dependencies, idempotent base identities, removal of fabricated delivery/payment results, and regression/Compose checks landed in PR #4. The next change versions all 36 PostgreSQL tables, enforces source/financial integrity, separates runtime roles, and verifies fresh/legacy upgrades. See [database validation](docs/DATABASE_VALIDATION.md), [migration guide](docs/DATABASE_MIGRATIONS.md), and [API inventory](docs/API_IMPLEMENTATION_STATUS.md). Real model/provider/hosted-runner feasibility remains pending; M0 and M1 are not complete.
 
 ## 1. Outcome and planning basis
 

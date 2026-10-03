@@ -325,6 +325,7 @@ CREATE TABLE verification_jobs (
   lease_attempt integer NOT NULL DEFAULT 0,
   started_at timestamptz,
   completed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (agency_id,id), UNIQUE (agency_id,task_id,id),
   UNIQUE (agency_id,task_id,delivery_id,id),
   FOREIGN KEY (agency_id,task_id,delivery_id) REFERENCES deliveries(agency_id,task_id,id)
