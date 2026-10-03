@@ -10,7 +10,9 @@ The foundation provides PostgreSQL 17 migrations and integrity constraints, rest
 
 Brief capture and revisions use the seeded immutable fixture catalog. Durable structured compilation supports OpenAI, Gemini and OpenRouter. Canonical mandate APIs draft versions, approve an exact digest, freeze three validated checks and recipient/payment terms, and supersede prior authority while preserving the payment obligation and history. Compilation requires configured provider access; approval requires a confirmed protected recipient binding, which base seeding does not fabricate. See [mandate validation](docs/MANDATE_VALIDATION.md).
 
-Delivery verification, reset/replay and payouts remain held. Actual model evaluation, sandbox settlement/webhook/cancellation proof, runner polling and hosted judge access are pending. The optional `verification` profile contains the runner scaffold; its synthetic outputs are not used by the API.
+Assigned contractors can submit an allowlisted artifact against current approved authority. The runner polls leased jobs, performs real Chromium/HTTP checks and uploads attributable PNG/JSON evidence to PostgreSQL. Canonical evidence downloads verify stored hashes and lineage. All six broken/corrected artifacts have actual execution proof; completed verification remains held for M4 review. See [M3 validation](docs/M3_VALIDATION.md).
+
+Actual model evaluation, protected recipient provisioning, grounded review, reset/replay, sandbox settlement/webhook/cancellation proof and hosted judge access remain pending.
 
 See [implementation milestones](IMPLEMENTATION_PLAN.md), the [GitHub roadmap](https://github.com/lavkushry/ProofPay/issues/1), and the [API coverage inventory](docs/API_IMPLEMENTATION_STATUS.md). The root `00`–`06` documents define the target product; their contracts do not imply completed implementation.
 
@@ -27,6 +29,8 @@ docker compose up --build
 - Checkout fixture: http://localhost:8080
 
 Compose provisions separate database roles, applies Alembic migrations, preserves base identities/history, then starts the API, workflow worker and web proxy. No provider credentials are needed. Services bind to localhost; PostgreSQL 17 uses `pgdata17`, preserving any older PostgreSQL 16 volume. Upgrade an unversioned PR #4 database using the [migration guide](docs/DATABASE_MIGRATIONS.md).
+
+Start actual verification with `docker compose --profile verification up --build`. The runner uses a distinct `RUNNER_SERVICE_TOKEN`, an internal API/fixture network, a read-only filesystem and bounded resources. It receives no database, model or payment credentials. With the profile running, `python scripts/runner_isolation.py` checks reachability and blocked database/public egress. Delivery requires a compiled, approved mandate and confirmed protected recipient binding; base seeds do not fabricate that authority.
 
 Sign in with `local-judge-access` for owner/Maya/Leo switching, or use `local-owner-access`, `local-maya-access`, or `local-leo-access` with the corresponding starting persona. These public codes and the Compose session key are local development examples. Replace them for deployment and require HTTPS/Secure cookies. See [session and worker operations](docs/SESSIONS_AND_WORKERS.md).
 
@@ -50,6 +54,8 @@ python scripts/api_inventory.py --check
 ```
 
 In `frontend/`, run `npm ci`, `npm run build`, and `npm audit --audit-level=moderate`. With Compose running, `python scripts/smoke_test.py` checks readiness, real sessions/CSRF/persona/logout, nginx routing, fixtures and the delivery hold. GitHub Actions also runs PostgreSQL acceptance and actual Chromium validation, uploading screenshots. PostgreSQL tests require an isolated administrative test connection; see the [validation report](docs/WORKFLOW_VALIDATION.md).
+
+For real verification acceptance, build `docker build -f runner/Dockerfile -t proofpay-m3-runner .`, set `PROOFPAY_TEST_DATABASE_URL` to an isolated administrator connection, then run `PROOFPAY_RUNNER_BROWSER_TESTS=1 python -m pytest -q`. Six container-polling cases save downloadable evidence under ignored `artifacts/verification/`. Their compiler and recipient fixtures are explicit doubles; browser/HTTP execution and storage are actual.
 
 Python dependency ranges live in each service's `requirements.in`; compiled `requirements.txt` files pin resolved versions. Regenerate with `uv pip compile SERVICE/requirements.in --python-version 3.11 --output-file SERVICE/requirements.txt`. Keep the Playwright image tag aligned with the runner's pinned package.
 

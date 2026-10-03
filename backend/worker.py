@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from backend.app.config import settings
 from backend.app.database import AsyncSessionLocal, engine
 from backend.app.errors import APIError
-from backend.app.models import AIInteraction, Agency, Brief, BriefRevision, Compilation, DeliveryTask, DemoRun, FixtureManifest, MandateVersion, OutboxEvent
+from backend.app.models import AIInteraction, Agency, Brief, BriefRevision, Compilation, Delivery, DeliveryTask, DemoRun, FixtureManifest, MandateVersion, OutboxEvent, VerificationJob
 from backend.app.schemas.api_schemas import CheckProposal
 from backend.app.services.commands import canonical_digest
 from backend.app.services.catalog import validated_snapshot
@@ -197,6 +197,9 @@ async def process_lease(factory, lease):
     if lease.event_type == "mandate_recorded":
         await outbox.complete(factory, lease, apply_mandate_recorded)
         return
+    if lease.event_type == "delivery_recorded":
+        await outbox.complete(factory, lease, apply_delivery_recorded)
+        return
     if lease.event_type != "brief_recorded":
         await outbox.fail(factory, lease, "UNSUPPORTED_JOB", held=True)
         return
@@ -212,6 +215,17 @@ async def apply_mandate_recorded(db, job):
     if version is None:
         raise APIError(409, "STALE_MANDATE", "Recorded mandate lineage is unavailable.")
     return {"mandate_id": str(version.mandate_id), "version_id": str(version.id)}
+
+
+async def apply_delivery_recorded(db, job):
+    delivery = await db.scalar(select(Delivery).join(VerificationJob,
+        (VerificationJob.agency_id==Delivery.agency_id)&(VerificationJob.delivery_id==Delivery.id))
+        .where(Delivery.agency_id==job.agency_id, Delivery.task_id==job.task_id,
+               Delivery.id==uuid.UUID(job.payload["delivery_id"]),
+               VerificationJob.id==uuid.UUID(job.payload["verification_job_id"])))
+    if delivery is None:
+        raise APIError(409, "STALE_DELIVERY", "Delivery job lineage is unavailable.")
+    return {"resource_id": str(delivery.id)}
 
 
 async def heartbeat_loop(factory, lease):

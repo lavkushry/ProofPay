@@ -9,19 +9,24 @@ from backend.app.errors import APIError
 from backend.app.schemas.commands import DeliveryCreate
 from backend.app.services.auth import Actor, authorize_task, require_csrf
 from backend.app.services.commands import execute_command, idempotency_key
+from backend.app.services.delivery_verification import capture
+from backend.app.schemas.verification import DeliveryResponse
 
 router = APIRouter(tags=["Deliveries"])
 
 
-@router.post("/api/tasks/{task_id}/deliveries")
-@router.post("/api/contractor/tasks/{task_id}/deliveries")
+@router.post("/api/tasks/{task_id}/deliveries", status_code=201, response_model=DeliveryResponse)
+@router.post("/api/contractor/tasks/{task_id}/deliveries", status_code=201, response_model=DeliveryResponse)
 async def submit_delivery(task_id: uuid.UUID, body: DeliveryCreate, request: Request,
                           actor: Actor = Depends(require_csrf), db: AsyncSession = Depends(get_db)):
     async def authorize(database, current):
+        if current.role != "contractor":
+            raise APIError(403, "FORBIDDEN", "Only the assigned contractor may submit delivery.")
         await authorize_task(database, current, task_id)
 
     async def mutate(database, current):
-        raise APIError(503, "WORKFLOW_UNAVAILABLE", "Delivery verification is awaiting implementation. No work or payment was created.")
+        task = await authorize_task(database, current, task_id)
+        return await capture(database, current, task, body)
 
     # Both aliases share the identical validated body/target and command family.
     canonical = {"task_id": str(task_id), **body.model_dump(mode="json")}

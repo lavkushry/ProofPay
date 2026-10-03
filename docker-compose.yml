@@ -59,7 +59,10 @@ services:
       DEMO_OWNER_ACCESS_CODE: ${DEMO_OWNER_ACCESS_CODE:-local-owner-access}
       DEMO_MAYA_ACCESS_CODE: ${DEMO_MAYA_ACCESS_CODE:-local-maya-access}
       DEMO_LEO_ACCESS_CODE: ${DEMO_LEO_ACCESS_CODE:-local-leo-access}
+      RUNNER_SERVICE_TOKEN: ${RUNNER_SERVICE_TOKEN:-local-only-runner-service-key-change-before-deployment}
+      RUNNER_LEASE_SECONDS: ${RUNNER_LEASE_SECONDS:-90}
     command: ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks: [default, verification]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -101,18 +104,34 @@ services:
       dockerfile: fixture/Dockerfile
     ports:
       - "127.0.0.1:${PROOFPAY_FIXTURE_PORT:-8080}:8080"
+    networks: [default, verification]
 
   runner:
     profiles: ["verification"]
     build:
-      context: ./runner
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: runner/Dockerfile
     environment:
       - FIXTURE_URL=http://fixture:8080
       - API_URL=http://api:8000
+      - RUNNER_SERVICE_TOKEN=${RUNNER_SERVICE_TOKEN:-local-only-runner-service-key-change-before-deployment}
+    networks: [verification]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /home/pwuser/.cache:size=64m,uid=1001,gid=1001
     depends_on:
-      - fixture
-      - api
+      api:
+        condition: service_healthy
+      fixture:
+        condition: service_started
+    restart: unless-stopped
 
   web:
     build:
@@ -126,3 +145,7 @@ services:
 
 volumes:
   pgdata17:
+
+networks:
+  verification:
+    internal: true
